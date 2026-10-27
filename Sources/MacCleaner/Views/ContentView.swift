@@ -10,6 +10,8 @@ struct ContentView: View {
                     .tag(SidebarItem.overview)
                 Label("Disk Explorer", systemImage: "rectangle.split.3x3")
                     .tag(SidebarItem.explorer)
+                Label("Applications", systemImage: "square.grid.2x2")
+                    .tag(SidebarItem.apps)
 
                 Section("Categories") {
                     ForEach(ScanCategory.allCases) { category in
@@ -26,6 +28,8 @@ struct ContentView: View {
                 CategoryDetailView(category: category).id(category)
             case .explorer:
                 ExplorerView()
+            case .apps:
+                AppsView()
             case .overview, nil:
                 OverviewView()
             }

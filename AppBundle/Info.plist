@@ -24,6 +24,8 @@
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Mac Cleaner asks Finder to move apps owned by the system (such as App Store apps) to the Trash when you uninstall them.</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Mac Cleaner looks for large and duplicate files on your Desktop. Nothing is removed without your confirmation.</string>
 	<key>NSDocumentsFolderUsageDescription</key>

@@ -5,6 +5,7 @@ import SwiftUI
 enum SidebarItem: Hashable {
     case overview
     case explorer
+    case apps
     case category(ScanCategory)
 }
 

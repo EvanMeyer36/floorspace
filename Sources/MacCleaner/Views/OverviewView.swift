@@ -36,6 +36,8 @@ struct OverviewView: View {
                 Button("Explore Disk\u{2026}") { model.sidebarSelection = .explorer }
                     .help("See every folder by size, WizTree-style")
                     .padding(.leading, 8)
+                Button("Apps\u{2026}") { model.sidebarSelection = .apps }
+                    .help("See installed apps by size and uninstall them")
             }
             DiskUsageBar(disk: model.disk, reclaimable: model.totalReclaimable)
         }
