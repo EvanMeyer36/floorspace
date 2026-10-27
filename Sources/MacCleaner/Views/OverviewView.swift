@@ -143,6 +143,12 @@ private struct CategoryCard: View {
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            } else if let result = model.results[category], result.items.isEmpty,
+                      result.warnings.contains(where: { $0.settingsPane != nil }) {
+                Text("Needs permission").font(.title3.weight(.semibold))
+                Text("macOS blocked access. Open to allow it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             } else if let result = model.results[category] {
                 Text(Format.bytes(result.reclaimableSize))
                     .font(.title2.weight(.semibold))
