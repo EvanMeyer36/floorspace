@@ -149,6 +149,13 @@ final class ExplorerModel: ObservableObject {
         selectedIDs.compactMap { node(withID: $0) }.sorted { $0.size > $1.size }
     }
 
+    /// Total size of the selection, counting a folder and something inside it only once.
+    var selectedSize: Int64 {
+        let nodes = selectedNodes
+        return nodes.filter { node in !nodes.contains { $0 !== node && node.isDescendant(of: $0) } }
+            .reduce(0) { $0 + $1.size }
+    }
+
     /// Selection from the tree or file list. Picking a single item zooms the map
     /// to its folder so it's visible in context; picking several leaves the map where it is.
     func selectFromList(_ ids: Set<Int>) {

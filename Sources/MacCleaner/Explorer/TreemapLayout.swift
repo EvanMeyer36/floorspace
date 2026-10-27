@@ -6,12 +6,14 @@ struct TreemapCell {
     let node: DiskNode?
     let rect: CGRect
     /// Folder name strip, when the folder is big enough to label.
-    let headerRect: CGRect?
+    var headerRect: CGRect?
     let depth: Int
     /// For the leftover sliver: how many items it stands for.
     let hiddenCount: Int
-    /// A folder too small to show its contents, drawn as one solid block.
-    let isCollapsed: Bool
+    /// For the leftover sliver: the folder those items are in (double-click zooms into it).
+    let container: DiskNode?
+    /// A folder whose contents aren't drawn (too small, or past the drawing budget): one solid block.
+    var isCollapsed: Bool
     /// Color group for blocks that aren't a single file (collapsed folders, slivers).
     let fillType: FileType?
 }
@@ -19,17 +21,17 @@ struct TreemapCell {
 enum TreemapLayout {
     static let headerHeight: CGFloat = 16
     /// Items whose share of the area would be smaller than this many square points aren't drawn individually.
-    static let minArea: CGFloat = 20
+    static let minArea: CGFloat = 8
 
     /// Lays out the whole tree under `root`, nesting folders inside their parents.
     /// Breadth-first so that when the cell budget runs out, it's the deepest, tiniest detail that's dropped.
-    static func layout(_ root: DiskNode, in bounds: CGRect, maxCells: Int = 12_000) -> [TreemapCell] {
+    static func layout(_ root: DiskNode, in bounds: CGRect, maxCells: Int = 25_000) -> [TreemapCell] {
         var cells: [TreemapCell] = []
-        var queue: [(DiskNode, CGRect, Int)] = [(root, bounds, 0)]
+        var queue: [(node: DiskNode, area: CGRect, depth: Int, cellIndex: Int?)] = [(root, bounds, 0, nil)]
         var head = 0
 
         while head < queue.count && cells.count < maxCells {
-            let (folder, area, depth) = queue[head]
+            let (folder, area, depth, _) = queue[head]
             head += 1
 
             let visible = folder.children.filter { $0.size > 0 }
@@ -49,7 +51,7 @@ enum TreemapLayout {
             for (index, rect) in rects.enumerated() {
                 guard index < shown.count else {
                     cells.append(TreemapCell(node: nil, rect: rect, headerRect: nil, depth: depth + 1, hiddenCount: hidden.count,
-                                             isCollapsed: false, fillType: hidden.first?.displayType))
+                                             container: folder, isCollapsed: false, fillType: hidden.first?.displayType))
                     continue
                 }
                 let node = shown[shown.startIndex + index]
@@ -62,12 +64,20 @@ enum TreemapLayout {
                 }
                 let expands = node.isFolder && !node.children.isEmpty && inner.width >= 6 && inner.height >= 6
                 cells.append(TreemapCell(node: node, rect: rect, headerRect: expands ? header : nil, depth: depth + 1, hiddenCount: 0,
-                                         isCollapsed: node.isFolder && !expands, fillType: node.displayType))
+                                         container: nil, isCollapsed: node.isFolder && !expands, fillType: node.displayType))
                 if expands {
-                    queue.append((node, inner, depth + 1))
+                    queue.append((node, inner, depth + 1, cells.count - 1))
                 }
             }
         }
+
+        // Folders the budget never reached would otherwise be empty boxes; draw them solid instead.
+        for pending in queue[head...] {
+            guard let index = pending.cellIndex else { continue }
+            cells[index].isCollapsed = true
+            cells[index].headerRect = nil
+        }
+
         // Parents first, so children are drawn on top of their folder.
         return cells.sorted { $0.depth < $1.depth }
     }

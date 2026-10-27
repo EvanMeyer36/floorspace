@@ -141,8 +141,22 @@ struct TreemapView: View {
     }
 
     /// Double-click zooms into the top-level block under the pointer, one level at a time.
+    /// On a "more items" sliver it jumps straight into the folder holding them; on grouped
+    /// small files it opens their folder in Finder, since they aren't kept individually.
     private func drillDown() {
-        guard let node = hovered?.node, let focus = explorer.focus else { return }
+        guard let cell = hovered, let focus = explorer.focus else { return }
+        if cell.node == nil, let container = cell.container {
+            if container !== focus {
+                explorer.zoom(into: container)
+                hovered = nil
+            }
+            return
+        }
+        guard let node = cell.node else { return }
+        if case .smallFiles = node.kind {
+            if let folder = node.parent { explorer.revealInFinder(folder) }
+            return
+        }
         var target = node
         while let parent = target.parent, parent !== focus { target = parent }
         if target.isFolder {
@@ -298,14 +312,35 @@ private struct Tooltip: View {
                 if node.isUnreadable {
                     Text("macOS didn't let Mac Cleaner look inside.").font(.caption).foregroundStyle(.secondary)
                 }
+                if case .smallFiles = node.kind {
+                    hint("Files under 256 KB each, grouped so big scans stay fast.\nDouble-click to open the folder in Finder.")
+                } else if cell.isCollapsed {
+                    hint("Double-click to zoom in and see what's inside.")
+                }
             } else {
                 Text("\(Format.count(cell.hiddenCount)) more items").font(.callout.weight(.semibold))
-                Text("Each too small to draw here. Zoom in to see them.").font(.caption).foregroundStyle(.secondary)
+                if let container = cell.container {
+                    Text(container.name).font(.caption).foregroundStyle(.secondary)
+                    if container === focus {
+                        hint("Each is too small to draw at this size. Find them in the folder tree or Largest Files.")
+                    } else {
+                        hint("Too small to draw here. Double-click to zoom into this folder.")
+                    }
+                }
             }
         }
         .padding(8)
+        .frame(maxWidth: 380, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
         .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(width: 300, alignment: .leading)
+            .padding(.top, 2)
     }
 }

@@ -31,51 +31,64 @@ enum ChartColors {
     static let track = Color(nsColor: .quaternaryLabelColor)
 }
 
-// MARK: - Disk usage bar
+// MARK: - Storage bars
 
-/// One stacked bar: space used by other things, space we found that can be freed, free space.
-struct DiskUsageBar: View {
-    let disk: DiskSpace
-    let reclaimable: Int64
+struct StorageSegment {
+    let label: String
+    let value: Int64
+    let color: Color
+}
+
+/// One stacked horizontal bar over a whole disk, with a legend underneath.
+struct StorageBar: View {
+    let segments: [StorageSegment]
+    let total: Int64
 
     var body: some View {
-        let reclaimableShown = min(reclaimable, disk.used)
-        let otherUsed = disk.used - reclaimableShown
+        let shown = segments.filter { $0.value > 0 }
 
         VStack(alignment: .leading, spacing: 10) {
             GeometryReader { geo in
                 let gap: CGFloat = 2
-                let segments: [(Int64, Color, String)] = [
-                    (otherUsed, ChartColors.used, "Used: \(Format.bytes(otherUsed))"),
-                    (reclaimableShown, ChartColors.reclaimable, "Can be freed: \(Format.bytes(reclaimableShown))"),
-                    (disk.free, ChartColors.track, "Free: \(Format.bytes(disk.free))"),
-                ].filter { $0.0 > 0 }
-                let usableWidth = geo.size.width - gap * CGFloat(max(0, segments.count - 1))
-                let total = max(1, Double(disk.total))
+                let usableWidth = geo.size.width - gap * CGFloat(max(0, shown.count - 1))
+                let scale = max(1, Double(total))
 
                 HStack(spacing: gap) {
-                    ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, segment in
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(segment.1)
-                            .frame(width: max(4, usableWidth * CGFloat(Double(segment.0) / total)))
-                            .help(segment.2)
+                            .fill(segment.color)
+                            .frame(width: max(4, usableWidth * CGFloat(Double(segment.value) / scale)))
+                            .help("\(segment.label): \(Format.bytes(segment.value))")
                     }
                 }
             }
             .frame(height: 14)
             .accessibilityElement()
             .accessibilityLabel("Disk usage")
-            .accessibilityValue("\(Format.bytes(otherUsed)) used, \(Format.bytes(reclaimableShown)) can be freed, \(Format.bytes(disk.free)) free")
+            .accessibilityValue(shown.map { "\($0.label) \(Format.bytes($0.value))" }.joined(separator: ", "))
 
             HStack(spacing: 18) {
-                LegendEntry(color: ChartColors.used, label: "Used", value: otherUsed)
-                if reclaimableShown > 0 {
-                    LegendEntry(color: ChartColors.reclaimable, label: "Can be freed", value: reclaimableShown)
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, segment in
+                    LegendEntry(color: segment.color, label: segment.label, value: segment.value)
                 }
-                LegendEntry(color: ChartColors.track, label: "Free", value: disk.free)
             }
             .font(.callout)
         }
+    }
+}
+
+/// Overview bar: space used by other things, space we found that can be freed, free space.
+struct DiskUsageBar: View {
+    let disk: DiskSpace
+    let reclaimable: Int64
+
+    var body: some View {
+        let reclaimableShown = min(reclaimable, disk.used)
+        StorageBar(segments: [
+            StorageSegment(label: "Used", value: disk.used - reclaimableShown, color: ChartColors.used),
+            StorageSegment(label: "Can be freed", value: reclaimableShown, color: ChartColors.reclaimable),
+            StorageSegment(label: "Free", value: disk.free, color: ChartColors.track),
+        ], total: disk.total)
     }
 }
 

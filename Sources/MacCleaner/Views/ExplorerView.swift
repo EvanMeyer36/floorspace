@@ -22,6 +22,7 @@ struct ExplorerView: View {
             }
         }
         .navigationTitle("Disk Explorer")
+        .onChange(of: explorer.treeVersion) { model.refreshDisk() }
         .confirmationDialog(
             trashTitle,
             isPresented: Binding(get: { pendingTrash != nil }, set: { if !$0 { pendingTrash = nil } }),
@@ -137,6 +138,14 @@ struct ExplorerView: View {
     // MARK: Results
 
     private func results(_ root: DiskNode) -> some View {
+        VStack(spacing: 0) {
+            ExplorerStorageBar(root: root)
+            Divider()
+            splitViews(root)
+        }
+    }
+
+    private func splitViews(_ root: DiskNode) -> some View {
         VSplitView {
             HSplitView {
                 FolderTreeTable(root: root, onTrash: { pendingTrash = $0 })
@@ -188,6 +197,40 @@ struct ExplorerView: View {
     }
 }
 
+// MARK: - Storage bar
+
+/// Where the scanned folder sits on the disk, and how much the current selection would free.
+private struct ExplorerStorageBar: View {
+    @EnvironmentObject var explorer: ExplorerModel
+    @EnvironmentObject var model: AppModel
+    let root: DiskNode
+
+    var body: some View {
+        let disk = model.disk
+        let selected = min(explorer.selectedSize, disk.used)
+        let isWholeDisk = explorer.target == .startupDisk
+        let scanned = isWholeDisk ? disk.used : min(root.size, disk.used)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(ExplorerModel.Target.startupDisk.title).font(.headline)
+                Spacer()
+                Text("\(Format.bytes(disk.free)) free of \(Format.bytes(disk.total))")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            StorageBar(segments: [
+                StorageSegment(label: isWholeDisk ? "Used" : root.name, value: scanned - selected, color: ChartColors.used),
+                StorageSegment(label: "Selected", value: selected, color: ChartColors.reclaimable),
+                StorageSegment(label: "Rest of disk", value: isWholeDisk ? 0 : disk.used - scanned, color: ChartColors.used.opacity(0.35)),
+                StorageSegment(label: "Free", value: disk.free, color: ChartColors.track),
+            ], total: disk.total)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+}
+
 // MARK: - Shared item actions
 
 /// Context-menu items for one or several selected items.
@@ -222,9 +265,7 @@ private struct SelectionBar: View {
     var body: some View {
         let nodes = explorer.selectedNodes
         let plan = explorer.trashPlan(for: nodes)
-        // Count a folder and something inside it only once.
-        let total = nodes.filter { node in !nodes.contains { $0 !== node && node.isDescendant(of: $0) } }
-            .reduce(Int64(0)) { $0 + $1.size }
+        let total = explorer.selectedSize
         HStack(spacing: 10) {
             Text("\(Format.count(nodes.count)) selected \u{2022} \(Format.bytes(total))")
                 .monospacedDigit()
