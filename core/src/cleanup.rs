@@ -170,7 +170,7 @@ fn rules() -> Vec<Rule> {
     }
     if cfg!(windows) {
         rules.extend([
-            each(Caches, "", "{temp}", 1, true, "Temporary file left behind by an app"),
+            each(Caches, "", "{temp}", 1, true, "Temporary files left behind by an app"),
             whole(Caches, "Chrome cache", "{local}/Google/Chrome/User Data/*/Cache", true, "Web cache. Chrome rebuilds it."),
             whole(Caches, "Chrome code cache", "{local}/Google/Chrome/User Data/*/Code Cache", true, "Chrome rebuilds it."),
             whole(Caches, "Edge cache", "{local}/Microsoft/Edge/User Data/*/Cache", true, "Web cache. Edge rebuilds it."),

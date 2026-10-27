@@ -17,3 +17,11 @@ dist/
 
 # Rust build output
 target/
+
+# Desktop app
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/gen/
+
+# Local UI fixture (real data from this machine)
+desktop/src/dev/fixture.json

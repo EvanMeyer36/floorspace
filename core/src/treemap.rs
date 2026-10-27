@@ -28,6 +28,10 @@ impl Rect {
 pub struct Cell {
     /// `None` for a sliver standing in for many items too small to draw.
     pub node: Option<NodeId>,
+    /// Name of the node (for labels, tooltips and highlighting by extension); empty for slivers.
+    pub name: String,
+    /// Bytes this block stands for.
+    pub size: u64,
     pub rect: Rect,
     /// Name strip of a labelled folder.
     pub header: Option<Rect>,
@@ -101,6 +105,8 @@ pub fn layout(tree: &DiskTree, focus: NodeId, width: f64, height: f64, max_cells
                 let biggest_hidden = hidden.first().and_then(|&h| tree.node(h)).and_then(|n| n.file_type);
                 cells.push(Cell {
                     node: None,
+                    name: String::new(),
+                    size: hidden_size as u64,
                     rect,
                     header: None,
                     depth: depth + 1,
@@ -131,6 +137,8 @@ pub fn layout(tree: &DiskTree, focus: NodeId, width: f64, height: f64, max_cells
             };
             cells.push(Cell {
                 node: Some(child_id),
+                name: child.name.clone(),
+                size: child.size,
                 rect,
                 header: if expands { header } else { None },
                 depth: depth + 1,
