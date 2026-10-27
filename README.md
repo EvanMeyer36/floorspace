@@ -2,16 +2,24 @@
 
 **See what's filling your Mac's disk, and clear it safely.**
 
-A native macOS app that combines two tools:
+A native macOS app that combines three tools:
 
 - **Smart cleanup**: finds caches, developer junk, old downloads, duplicates and more, and pre-selects what's safe to remove.
 - **Disk Explorer**: a WizTree-style map of your whole disk, so you can see exactly where the space went.
+- **App uninstaller**: shows every installed app by size and when you last opened it, and removes it together with the files
+  it leaves behind in `~/Library`.
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
 ![Swift](https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Vibe coded](https://img.shields.io/badge/vibe-coded-ff69b4)
+![Vibe coded with Claude Opus 5.5](https://img.shields.io/badge/vibe_coded-Claude_Opus_5.5-ff69b4)
+
+> [!WARNING]
+> **This is vibe-coded software that deletes files.** It was written by an AI model, Claude Opus 5.5, with a person
+> steering. It moves things to the Trash rather than deleting them outright, and it has guard rails, but it hasn't had a
+> line-by-line human review or wide testing. **Back up your Mac first**, check what's selected before you clean, and read the
+> [vibe-coded disclaimer](#vibe-coded-disclaimer).
 
 ![Overview](docs/screenshots/overview.png)
 
@@ -44,12 +52,15 @@ folder), and you can stop it at any time.
 Pick **Macintosh HD**, your home folder, or any folder and scan it. It's fast: `/Applications` (265k files) takes about 1–2
 seconds, and `/System` (470k files and folders) about 4.
 
+- **Storage bar** showing how much of the disk the scanned folder takes, what's selected, and what's free
 - **Folder tree** sorted biggest-first, with a "% of parent" bar on every row
 - **Largest Files**: the 1,000 biggest files anywhere on the disk, in one list
 - **File Types**: total size and count per extension
 - **Treemap**: every block's area is the space it takes, colored by type (images, video, apps & code, music, documents,
-  data & AI models, archives & disk images, other). Double-click a block to zoom in, and click a legend entry or a file type
-  to highlight just those files.
+  data & AI models, archives & disk images, other).
+  - Double-click a block to zoom in. Double-clicking a "more items" block zooms straight into the folder holding them.
+  - Click a legend entry or a file type to highlight just those files.
+  - Hover any block for its name, size and path.
 - **Multi-select**: ⌘/⇧-click in the lists or ⌘-click on the map, then **Show in Finder** or **Move to Trash** all at once
 
 ![Disk Explorer](docs/screenshots/disk-explorer.png)
@@ -59,6 +70,26 @@ seconds, and `/System` (470k files and folders) about 4.
 It also comes in dark mode:
 
 ![Treemap in dark mode, video files highlighted](docs/screenshots/treemap-dark.png)
+
+### Applications
+
+Every app in `/Applications` and `~/Applications`, with:
+
+- **Real size**: the app plus the data it keeps in `~/Library`, e.g. "1.6 GB (+1.17 GB data)"
+- **When you last opened it**: sort by it, or tick **Not opened in 6 months**
+- **Its leftover files**, each with a checkbox: app data, caches, settings, saved windows, web data, containers and background
+  helpers
+- **Uninstall**: moves the app and the ticked leftovers to the Trash, quitting the app first if it's open. Select several apps
+  to uninstall them together.
+
+Some apps get extra care:
+
+- **App Store and other system-owned apps** go through Finder, which asks for your password the way it does when you drag
+  them to the Trash yourself.
+- **Built-in macOS apps** (and Mac Cleaner itself) are protected.
+- **Steam shortcuts** are recognized as just launchers. Uninstalling one never touches the game's save files.
+
+![Applications](docs/screenshots/applications.png)
 
 ---
 
@@ -136,6 +167,9 @@ Deleting the wrong thing is the worst thing a cleaner can do, so the app is caut
   - standard folders like Documents or Library
   - anything outside your home folder and `/Applications`
 - **Duplicates that wouldn't free anything** (APFS clones and hard links) are left out.
+- **Uninstalling only takes an app's own files.** Leftovers are matched by the app's exact bundle ID, so one app's uninstall
+  never takes another app's files or a shared suite container (like Microsoft Office's). A few folders are matched by the
+  app's name instead; those are labelled "matched by app name", and you can untick any leftover to keep it.
 - **The file-by-file searches skip `~/Library`, app bundles and `node_modules`.** Those are covered by the targeted
   categories instead.
 
@@ -160,6 +194,16 @@ Each call returns the names, types and allocated sizes of many entries at once, 
 isn't room the smallest, deepest detail is what gets dropped. Folders too small to show their contents are drawn in the color
 of the file type that takes the most space inside them.
 
+### App uninstaller
+
+`Sources/MacCleaner/Apps/AppsScanner.swift`:
+
+- **Finding apps:** it lists the app folders (and one level of subfolders, like `Utilities`).
+- **Measuring:** it measures every app in parallel.
+- **Finding leftovers:** it reads each relevant `~/Library` folder once, then matches entries by bundle ID.
+- **"Last opened":** it uses Spotlight's record, falling back to when the app's program was last read, since Spotlight often
+  has no entry for apps opened from the Dock.
+
 ### Cleanup scans
 
 Each category scan runs on its own background task, reports progress through a lock-guarded object the UI samples a few times
@@ -172,6 +216,7 @@ file found by two categories, or something inside a folder that's also being rem
 | --- | --- |
 | `Sources/MacCleaner/Scanning` | Cleanup-category scanners |
 | `Sources/MacCleaner/Explorer` | Disk Explorer: bulk scanner, tree model, treemap layout |
+| `Sources/MacCleaner/Apps` | App uninstaller: app and leftover discovery, uninstall |
 | `Sources/MacCleaner/Cleaning` | Removal engine |
 | `Sources/MacCleaner/Views` | SwiftUI screens |
 | `AppBundle/` | `Info.plist` and app icon |
@@ -181,6 +226,7 @@ file found by two categories, or something inside a folder that's also being rem
 
 ## Known limitations
 
+- Leftover detection covers your user `~/Library` only, not system-wide `/Library` files that some installers add.
 - The download isn't notarized, so macOS needs a one-time "Open Anyway" (see [Install](#install)).
 - Release builds include an Intel version, but it has only been tested on Apple Silicon.
 - There are no automated tests yet. The scanners were checked against folders with known contents, and the Disk Explorer's
@@ -189,18 +235,55 @@ file found by two categories, or something inside a folder that's also being rem
 
 ---
 
-## Vibe coded
+## Vibe-coded disclaimer
 
-This app was **vibe coded**. It was built entirely through conversation with [Claude Code](https://claude.com/claude-code),
-Anthropic's AI coding agent: a human described what they wanted ("make it work like WizTree", "more color, no grey", "can't
-select multiple files") and steered from there, and the AI wrote the code, built it, tested the scanners and checked the UI
-along the way.
+### How this was made
 
-The safety rails above were taken seriously, and several came out of testing (e.g. not letting you trash files inside apps or
-the Photos library). Still, it's a disk cleaner written this way, so read the code, and keep a backup before you clean
-anything you care about.
+Mac Cleaner was **vibe coded**. All of the code was written by **Claude Opus 5.5**, Anthropic's AI model, working in
+[Claude Code](https://claude.com/claude-code) over one long conversation. The human side of the project:
 
-Issues and pull requests are welcome.
+- set the direction ("make it work like WizTree", "more color, no grey", "we should also see apps and delete them")
+- tried the app and reported what felt wrong
+- made the calls on scope, license and publishing
+
+The code was **not written or reviewed line by line by a person**.
+
+### What was actually checked
+
+The AI tested its own work as it went:
+
+- **Scanners:** run against throwaway folders with known contents (duplicates, APFS clones, hard links, stale
+  `node_modules`, a fake Photos library).
+- **Disk Explorer totals:** compared with `du`, matching to the kilobyte on the folders tested.
+- **Move to Trash and uninstall:** run for real on dummy files and a fake app with fake leftovers, confirming that the right
+  things moved and that unticked items stayed.
+- **Every screen:** rendered in light and dark mode and inspected.
+
+That testing caught real problems before release, which is why you should read the code:
+
+- the Disk Explorer would have let you trash files from inside apps and the Photos library
+- uninstalling a Steam shortcut would have taken the game's save files
+- a blocked folder was reported as "Nothing found"
+
+### What hasn't been checked
+
+- There's no automated test suite.
+- It hasn't been tested on Intel Macs, on other people's Macs, or across many macOS versions and setups.
+- The Finder password path for removing system-owned apps hasn't been exercised end to end.
+- Whole-disk scans with Full Disk Access granted have only been run on the developer's Mac.
+
+### Using it sensibly
+
+- **Have a backup** (e.g. Time Machine) before cleaning anything you care about.
+- **Look at what's selected** before you confirm. Pre-selected means "rebuilt automatically", not "reviewed by a human".
+- **Check the Trash before emptying it.** Almost everything Mac Cleaner removes goes there first, and the few permanent
+  actions are labelled **Permanent**.
+
+The software is provided "as is", without warranty of any kind (see the [MIT license](LICENSE)). Mac Cleaner isn't affiliated
+with Apple, Anthropic, or WizTree.
+
+Bug reports, reviews and pull requests are very welcome. A second pair of human eyes on the deletion code would be especially
+valuable.
 
 ## License
 
