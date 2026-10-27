@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    name: Engine (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests
+        run: cargo test -p cleaner-core -p cleaner-cli
+        env:
+          # Safe on throwaway CI machines: really moves test files to the trash and lists real apps.
+          CLEANER_TEST_TRASH: "1"
+          CLEANER_TEST_APPS: "1"
+
+      - name: Build CLI
+        run: cargo build --release -p cleaner-cli
+
+      - name: Smoke test - disk scan
+        run: cargo run --release -q -p cleaner-cli -- scan .
+
+      - name: Smoke test - cleanup categories
+        run: cargo run --release -q -p cleaner-cli -- junk --search .
+
+      - name: Smoke test - installed apps
+        run: cargo run --release -q -p cleaner-cli -- apps
+
+  macos-app:
+    name: macOS app (SwiftUI)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: macos
+        run: swift build -c release
