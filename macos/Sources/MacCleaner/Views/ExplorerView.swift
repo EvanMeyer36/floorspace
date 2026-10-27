@@ -100,6 +100,12 @@ struct ExplorerView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                if !summary.otherVolumes.isEmpty {
+                    Label("\(summary.otherVolumes.count) other volume\(summary.otherVolumes.count == 1 ? "" : "s") skipped", systemImage: "externaldrive")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .help("These are separate drives or disk images mounted inside this folder, so they aren't counted:\n\n" + summary.otherVolumes.prefix(8).joined(separator: "\n"))
+                }
                 if summary.unreadableCount > 0 {
                     Button {
                         model.openSettings(.fullDiskAccess)

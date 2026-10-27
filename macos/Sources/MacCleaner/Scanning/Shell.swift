@@ -16,6 +16,8 @@ enum Shell {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
 
         do {
             try process.run()
@@ -23,13 +25,36 @@ enum Shell {
             return nil
         }
 
-        let killer = DispatchWorkItem { if process.isRunning { process.terminate() } }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        killer.cancel()
+        // Collect output as it arrives rather than waiting for the pipe to close: a tool that
+        // leaves a background process holding the pipe open (Docker can) would otherwise hang
+        // the read. The process exiting is what we wait on, with a timeout.
+        let output = OutputBuffer()
+        let readDone = DispatchSemaphore(value: 0)
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                readDone.signal()
+            } else {
+                output.append(chunk)
+            }
+        }
 
-        return Result(status: process.terminationStatus, output: String(decoding: data, as: UTF8.self))
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            _ = exited.wait(timeout: .now() + 5)
+        }
+        if readDone.wait(timeout: .now() + 2) == .timedOut {
+            pipe.fileHandleForReading.readabilityHandler = nil
+        }
+        return Result(status: process.isRunning ? -1 : process.terminationStatus, output: output.text)
+    }
+
+    private final class OutputBuffer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func append(_ chunk: Data) { lock.withLock { data.append(chunk) } }
+        var text: String { lock.withLock { String(decoding: data, as: UTF8.self) } }
     }
 
     static func locate(_ name: String) -> String? {

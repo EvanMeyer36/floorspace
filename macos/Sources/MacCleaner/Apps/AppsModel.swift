@@ -148,12 +148,13 @@ final class AppsModel: ObservableObject {
     private func moveAppToTrash(_ url: URL) async -> Bool {
         if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil { return true }
 
-        let path = url.path.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let source = "tell application \"Finder\" to delete (POSIX file \"\(path)\" as alias)"
+        // The path goes in as an argument, never pasted into the script, so no file name can change what it does.
+        let script = ["on run argv", "tell application \"Finder\" to delete (POSIX file (item 1 of argv) as alias)", "end run"]
+        let arguments = script.flatMap { ["-e", $0] } + [url.path]
         return await Task.detached {
-            var error: NSDictionary?
-            NSAppleScript(source: source)?.executeAndReturnError(&error)
-            return error == nil && !DiskUtils.exists(url)
+            // Generous timeout: Finder waits while the user types their password.
+            let result = Shell.run("/usr/bin/osascript", arguments, timeout: 300)
+            return result?.succeeded == true && !DiskUtils.exists(url)
         }.value
     }
 

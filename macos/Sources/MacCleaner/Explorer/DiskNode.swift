@@ -96,6 +96,8 @@ final class DiskNode: Identifiable {
     var children: [DiskNode] = []
     /// Folder only: macOS refused to list it.
     var isUnreadable = false
+    /// Folder only: another volume mounted here; dropped from the tree after the scan.
+    var isOtherVolume = false
     /// Folder only: set on the scan root so the full path can be rebuilt.
     var rootPath: String?
     /// Folders and grouped small files: the file type taking the most space inside.

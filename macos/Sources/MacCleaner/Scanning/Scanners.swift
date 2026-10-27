@@ -23,6 +23,7 @@ enum Scanners {
         var warnings: [ScanWarning] = []
         let ownedByDevJunk = DevJunkLocations.pathsInsideLibraryCaches
         let minimumSize: Int64 = 1_000_000 // hide the long tail of tiny folders
+        let openApps = runningApps()
 
         for (folder, isLogs) in [("Caches", false), ("Logs", true)] {
             let dir = DiskUtils.library.appendingPathComponent(folder)
@@ -39,11 +40,17 @@ enum Scanners {
 
                 let folderName = url.lastPathComponent
                 let isAppleOwned = folderName.hasPrefix("com.apple.")
+                let name = appName(forBundleID: folderName) ?? folderName
+                // An open app keeps using its cache: moving it frees nothing until the app restarts, and some apps misbehave.
+                let openApp = isLogs ? nil : openApps.match(folder: folderName, displayName: name)
+                let isOpen = openApp != nil
                 let detail: String
                 if isLogs {
                     detail = "Log files"
                 } else if isAppleOwned {
                     detail = "macOS system cache. Often in use and recreated right away."
+                } else if isOpen {
+                    detail = "Cache \u{2022} \(openApp ?? name) is open. Quit it first so the space is actually freed."
                 } else {
                     detail = "Cache \u{2022} the app rebuilds it"
                 }
@@ -51,13 +58,37 @@ enum Scanners {
                     path: url,
                     size: size,
                     category: .caches,
-                    name: appName(forBundleID: folderName) ?? folderName,
+                    name: name,
                     detail: detail,
-                    isRecommended: isLogs || !isAppleOwned
+                    isRecommended: isLogs || (!isAppleOwned && !isOpen)
                 ))
             }
         }
         return ScanResult(category: .caches, items: items.sorted { $0.size > $1.size }, warnings: warnings)
+    }
+
+    private struct OpenApps {
+        /// Bundle ID → display name.
+        let byBundleID: [String: String]
+        let names: [String]
+
+        /// The open app using this cache folder, if any. Cache folders are named by bundle ID
+        /// ("com.spotify.client"), app name in any case ("ollama"), or the maker ("Google" for Google Chrome).
+        func match(folder: String, displayName: String) -> String? {
+            if let name = byBundleID[folder] { return name }
+            let candidates = [folder.lowercased(), displayName.lowercased()]
+            return names.first { name in
+                candidates.contains { $0 == name.lowercased() || name.lowercased().hasPrefix($0 + " ") }
+            }
+        }
+    }
+
+    /// Regular and menu-bar apps (both use their caches); not background-only processes.
+    private static func runningApps() -> OpenApps {
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy != .prohibited }
+        var byBundleID: [String: String] = [:]
+        for app in apps { if let id = app.bundleIdentifier { byBundleID[id] = app.localizedName ?? id } }
+        return OpenApps(byBundleID: byBundleID, names: apps.compactMap(\.localizedName))
     }
 
     /// Cache folders are usually named after a bundle ID; show the app's real name when we can find it.
@@ -118,7 +149,10 @@ enum Scanners {
 
     // MARK: - Downloads
 
-    private static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "zip", "xip", "iso", "tar", "gz", "tgz", "7z", "rar"]
+    /// Installers are done with once the app is installed, so they're pre-selected.
+    private static let installerExtensions: Set<String> = ["dmg", "pkg", "mpkg", "xip", "iso"]
+    /// Archives might be the only copy of what's inside, so they're flagged but never pre-selected.
+    private static let archiveExtensions: Set<String> = ["zip", "tar", "gz", "tgz", "7z", "rar"]
 
     private static func downloads(olderThanDays: Int, progress: ScanProgress) -> ScanResult {
         progress.setPhase("Looking through ~/Downloads")
@@ -136,12 +170,18 @@ enum Scanners {
                   let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day,
                   days >= olderThanDays else { continue }
 
-            let isArchiveOrInstaller = installerExtensions.contains(url.pathExtension.lowercased())
-            let detail = isArchiveOrInstaller
-                ? "Installer or archive, downloaded \(Format.age(days: days)). Usually already installed/extracted."
-                : "Downloaded \(Format.age(days: days))"
+            let ext = url.pathExtension.lowercased()
+            let isInstaller = installerExtensions.contains(ext)
+            let detail: String
+            if isInstaller {
+                detail = "Installer, downloaded \(Format.age(days: days)). Not needed once the app is installed."
+            } else if archiveExtensions.contains(ext) {
+                detail = "Archive, downloaded \(Format.age(days: days)). Check you've kept what's inside before removing it."
+            } else {
+                detail = "Downloaded \(Format.age(days: days))"
+            }
             items.append(ScanItem(path: url, size: DiskUtils.size(of: url, progress: progress), category: .downloads,
-                                  detail: detail, isRecommended: isArchiveOrInstaller))
+                                  detail: detail, isRecommended: isInstaller))
         }
         return ScanResult(category: .downloads, items: items.sorted { $0.size > $1.size }, warnings: warnings)
     }

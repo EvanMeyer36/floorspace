@@ -45,6 +45,7 @@ final class ExplorerModel: ObservableObject {
         let duration: TimeInterval
         let unreadableCount: Int
         let unreadableExamples: [String]
+        let otherVolumes: [String]
     }
 
     @Published var target: Target = .startupDisk
@@ -102,7 +103,8 @@ final class ExplorerModel: ObservableObject {
             typeStats = result.typeStats
             largestFiles = largest
             summary = Summary(files: result.fileCount, folders: result.folderCount, duration: result.duration,
-                              unreadableCount: result.unreadableCount, unreadableExamples: result.unreadableExamples)
+                              unreadableCount: result.unreadableCount, unreadableExamples: result.unreadableExamples,
+                              otherVolumes: result.otherVolumes)
             focus = result.root
             selectedIDs = []
             highlight = nil

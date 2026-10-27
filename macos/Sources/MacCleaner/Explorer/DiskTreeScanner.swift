@@ -21,6 +21,8 @@ final class DiskTreeScanner: @unchecked Sendable {
         let folderCount: Int
         let fileCount: Int
         let duration: TimeInterval
+        /// Folders that are other volumes mounted inside the scanned one.
+        let otherVolumes: [String]
     }
 
     /// Files at least this big get their own node; smaller ones are grouped per folder.
@@ -42,12 +44,16 @@ final class DiskTreeScanner: @unchecked Sendable {
     private let queue = OperationQueue()
     private let lock = NSLock()
     private let skipped = DiskTreeScanner.skippedPaths
+    /// Volumes the scan may count. Anything mounted inside the scanned folder on another volume
+    /// (simulator runtimes, external or network drives) is left out so totals match the disk.
+    private var allowedDevices: Set<Int32> = []
 
     private var stats: [String: TypeStat] = [:]
     private var unreadable: [String] = []
     private var unreadableCount = 0
     private var hardLinksSeen = Set<UInt64>()
     private var folderCount = 0
+    private var otherVolumesSkipped: [String] = []
     private var fileCount = 0
 
     init(progress: ScanProgress, cancel: CancelToken) {
@@ -58,6 +64,7 @@ final class DiskTreeScanner: @unchecked Sendable {
     }
 
     func scan(path: String, displayName: String) -> Output {
+        allowedDevices = Self.devices(for: path)
         let start = Date()
         let root = DiskNode(name: displayName, kind: .folder, parent: nil)
         root.rootPath = path
@@ -76,8 +83,20 @@ final class DiskTreeScanner: @unchecked Sendable {
             unreadableExamples: unreadable,
             folderCount: folderCount,
             fileCount: fileCount,
-            duration: Date().timeIntervalSince(start)
+            duration: Date().timeIntervalSince(start),
+            otherVolumes: otherVolumesSkipped.sorted()
         )
+    }
+
+    /// The scanned folder's own volume. For the startup disk that's two: macOS splits it into a
+    /// read-only system volume and a data volume (where /Users etc. really live).
+    private static func devices(for path: String) -> Set<Int32> {
+        var paths = [path]
+        if path == "/" { paths.append("/System/Volumes/Data") }
+        return Set(paths.compactMap { p -> Int32? in
+            var info = stat()
+            return stat(p, &info) == 0 ? info.st_dev : nil
+        })
     }
 
     // MARK: - Reading one folder
@@ -100,6 +119,16 @@ final class DiskTreeScanner: @unchecked Sendable {
         let fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else {
             markUnreadable(node, path: path)
+            return
+        }
+        // A folder on another volume is a mount point (a simulator runtime, an external or network
+        // drive). Asking the open folder itself is reliable; a directory listing reports the
+        // folder underneath the mount instead.
+        var info = stat()
+        if depth > 0, fstat(fd, &info) == 0, !allowedDevices.contains(info.st_dev) {
+            close(fd)
+            lock.withLock { otherVolumesSkipped.append(path) }
+            node.isOtherVolume = true // removed in finalize, which runs on one thread
             return
         }
 
@@ -275,6 +304,7 @@ final class DiskTreeScanner: @unchecked Sendable {
         }
         let typeCount = FileType.allCases.count
         for node in order.reversed() where node.isFolder {
+            node.children.removeAll(where: \.isOtherVolume)
             node.size = node.children.reduce(0) { $0 + $1.size }
             node.fileCount = node.children.reduce(0) { $0 + $1.fileCount }
             node.children.sort { $0.size > $1.size }
