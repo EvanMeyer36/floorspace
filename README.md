@@ -64,7 +64,28 @@ It also comes in dark mode:
 
 ## Install
 
-There's no pre-built download yet, so you build it from source. It takes about a minute, and you don't need full Xcode.
+### Download
+
+1. Get the latest **`MacCleaner-x.y.z.dmg`** from [Releases](https://github.com/EvanMeyer36/mac-cleaner/releases/latest).
+   It's a universal app that runs on Apple Silicon and Intel Macs with macOS 14 or later.
+2. Open the disk image and drag **Mac Cleaner** into **Applications**.
+3. **The first time you open it**, macOS will say it can't verify the app. That's because it isn't notarized (notarization
+   needs a paid Apple Developer account). To open it anyway:
+   1. Try to open it once, then click **Done**.
+   2. Go to **System Settings → Privacy & Security**, scroll down to *"Mac Cleaner was blocked…"*, click **Open Anyway**, and
+      confirm.
+
+   Or, from Terminal:
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Mac Cleaner.app"
+   ```
+
+   You only need to do this once.
+
+### Build from source
+
+It takes about a minute, and you don't need full Xcode.
 
 **You'll need:**
 
@@ -81,6 +102,7 @@ This builds **Mac Cleaner.app** and copies it to `/Applications`. Open it from S
 
 - Without `--install`, the app is only built into `build/`.
 - For quick development runs, `swift run` works too.
+- `./scripts/release.sh` builds the universal `.dmg` and `.zip` that go on the Releases page.
 
 ### Permissions
 
@@ -153,14 +175,14 @@ file found by two categories, or something inside a folder that's also being rem
 | `Sources/MacCleaner/Cleaning` | Removal engine |
 | `Sources/MacCleaner/Views` | SwiftUI screens |
 | `AppBundle/` | `Info.plist` and app icon |
-| `scripts/` | `build-app.sh` (build/install), `make-icon.swift` (regenerate the icon) |
+| `scripts/` | `build-app.sh` (build/install), `release.sh` (universal `.dmg`/`.zip`), `make-icon.swift` (regenerate the icon) |
 
 ---
 
 ## Known limitations
 
-- There's no notarized download yet, so you build from source.
-- `build-app.sh` builds for your Mac's own architecture. It's been tested on Apple Silicon, not on Intel Macs.
+- The download isn't notarized, so macOS needs a one-time "Open Anyway" (see [Install](#install)).
+- Release builds include an Intel version, but it has only been tested on Apple Silicon.
 - There are no automated tests yet. The scanners were checked against folders with known contents, and the Disk Explorer's
   totals against `du`.
 - Without Full Disk Access, some folders (the Trash, Mail, iPhone backups, other apps' data) can't be scanned.

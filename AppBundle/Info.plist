@@ -4,35 +4,35 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Mac Cleaner</string>
 	<key>CFBundleExecutable</key>
 	<string>MacCleaner</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.maccleaner.MacCleaner</string>
 	<key>CFBundleName</key>
 	<string>Mac Cleaner</string>
-	<key>CFBundleDisplayName</key>
-	<string>Mac Cleaner</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.0</string>
+	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Mac Cleaner looks for large and duplicate files on your Desktop. Nothing is removed without your confirmation.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Mac Cleaner looks for large and duplicate files in Documents. Nothing is removed without your confirmation.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>Mac Cleaner finds old downloads you may no longer need. Nothing is removed without your confirmation.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>

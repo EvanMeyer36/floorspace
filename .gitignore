@@ -11,3 +11,6 @@ build/
 .claude/
 
 .DS_Store
+
+# Release packages from scripts/release.sh
+dist/
