@@ -125,7 +125,7 @@ It takes about a minute, and you don't need full Xcode.
 
 ```bash
 git clone https://github.com/EvanMeyer36/mac-cleaner.git
-cd mac-cleaner
+cd mac-cleaner/macos
 ./scripts/build-app.sh --install
 ```
 
@@ -133,7 +133,7 @@ This builds **Mac Cleaner.app** and copies it to `/Applications`. Open it from S
 
 - Without `--install`, the app is only built into `build/`.
 - For quick development runs, `swift run` works too.
-- `./scripts/release.sh` builds the universal `.dmg` and `.zip` that go on the Releases page.
+- `./scripts/release.sh` (run from `macos/`) builds the universal `.dmg` and `.zip` that go on the Releases page.
 
 ### Permissions
 
@@ -179,7 +179,7 @@ Deleting the wrong thing is the worst thing a cleaner can do, so the app is caut
 
 ### Disk Explorer scanner
 
-`Sources/MacCleaner/Explorer/DiskTreeScanner.swift` reads directories with
+`macos/Sources/MacCleaner/Explorer/DiskTreeScanner.swift` reads directories with
 [`getattrlistbulk(2)`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getattrlistbulk.2.html).
 Each call returns the names, types and allocated sizes of many entries at once, and folders are spread across all CPU cores.
 
@@ -196,7 +196,7 @@ of the file type that takes the most space inside them.
 
 ### App uninstaller
 
-`Sources/MacCleaner/Apps/AppsScanner.swift`:
+`macos/Sources/MacCleaner/Apps/AppsScanner.swift`:
 
 - **Finding apps:** it lists the app folders (and one level of subfolders, like `Utilities`).
 - **Measuring:** it measures every app in parallel.
@@ -214,13 +214,14 @@ file found by two categories, or something inside a folder that's also being rem
 
 | Path | What's there |
 | --- | --- |
-| `Sources/MacCleaner/Scanning` | Cleanup-category scanners |
-| `Sources/MacCleaner/Explorer` | Disk Explorer: bulk scanner, tree model, treemap layout |
-| `Sources/MacCleaner/Apps` | App uninstaller: app and leftover discovery, uninstall |
-| `Sources/MacCleaner/Cleaning` | Removal engine |
-| `Sources/MacCleaner/Views` | SwiftUI screens |
-| `AppBundle/` | `Info.plist` and app icon |
-| `scripts/` | `build-app.sh` (build/install), `release.sh` (universal `.dmg`/`.zip`), `make-icon.swift` (regenerate the icon) |
+| `macos/` | The native macOS app (SwiftUI) |
+| `macos/Sources/MacCleaner/Scanning` | Cleanup-category scanners |
+| `macos/Sources/MacCleaner/Explorer` | Disk Explorer: bulk scanner, tree model, treemap layout |
+| `macos/Sources/MacCleaner/Apps` | App uninstaller: app and leftover discovery, uninstall |
+| `macos/Sources/MacCleaner/Cleaning` | Removal engine |
+| `macos/Sources/MacCleaner/Views` | SwiftUI screens |
+| `macos/AppBundle/` | `Info.plist` and app icon |
+| `macos/scripts/` | `build-app.sh` (build/install), `release.sh` (universal `.dmg`/`.zip`), `make-icon.swift` (regenerate the icon) |
 
 ---
 
