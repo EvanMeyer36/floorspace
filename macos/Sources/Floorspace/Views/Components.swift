@@ -182,7 +182,7 @@ struct CleanPlan {
     let permanent: [ScanItem]
 
     init(_ items: [ScanItem]) {
-        let unique = CleanerEngine.removingNested(items)
+        let unique = items.outermost
         self.items = unique
         self.toTrash = unique.filter { !$0.action.isPermanent }
         self.permanent = unique.filter { $0.action.isPermanent }

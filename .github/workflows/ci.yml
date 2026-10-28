@@ -43,9 +43,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (Rust engine + Swift app)
         working-directory: macos
-        run: swift build -c release
+        run: ./scripts/build-app.sh
 
   desktop:
     name: Desktop app (${{ matrix.os }})

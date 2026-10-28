@@ -251,7 +251,7 @@ struct DiskNodeActions: View {
         if !onDisk.isEmpty {
             Button("Show in Finder" + suffix) { explorer.revealInFinder(onDisk) }
         }
-        if nodes.count == 1, let node = nodes.first, node.isFolder, !node.children.isEmpty {
+        if nodes.count == 1, let node = nodes.first, node.isFolder, node.childCount > 0 {
             Button("Show in Map") { explorer.zoom(into: node) }
         }
         if !onDisk.isEmpty {
@@ -302,13 +302,13 @@ private struct FolderTreeTable: View {
     let onTrash: ([DiskNode]) -> Void
 
     var body: some View {
-        Table(root.children, children: \.childNodes, selection: selection) {
+        Table(explorer.children(of: root), children: \.childNodes, selection: selection) {
             TableColumn("Name") { node in
                 HStack(spacing: 6) {
                     icon(for: node).frame(width: 16)
                     Text(node.name).lineLimit(1).truncationMode(.middle)
                 }
-                .help(node.isOnDisk ? Format.tildePath(URL(fileURLWithPath: node.path)) : node.name)
+                .help(node.path.map(Format.tildePath) ?? node.name)
             }
             .width(min: 140, ideal: 220)
 
@@ -325,28 +325,28 @@ private struct FolderTreeTable: View {
             .width(min: 70, ideal: 90)
 
             TableColumn("Files") { node in
-                Text(node.fileCount > 0 ? Format.count(node.fileCount) : "")
+                Text(node.files > 0 ? Format.count(Int(node.files)) : "")
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .width(min: 50, ideal: 80)
         }
-        .contextMenu(forSelectionType: Int.self) { ids in
+        .contextMenu(forSelectionType: NodeID.self) { ids in
             DiskNodeActions(nodes: ids.compactMap(explorer.node(withID:)), onTrash: onTrash)
         } primaryAction: { ids in
             guard ids.count == 1, let node = explorer.node(withID: ids.first) else { return }
             if node.isFolder { explorer.zoom(into: node) } else { explorer.revealInFinder(node) }
         }
-        .id(explorer.treeVersion) // the tree is mutable reference data; rebuild rows after a change
+        .id(explorer.treeVersion) // the tree changed in the engine; rebuild rows
     }
 
-    private var selection: Binding<Set<Int>> {
+    private var selection: Binding<Set<NodeID>> {
         Binding(get: { explorer.selectedIDs }, set: { explorer.selectFromList($0) })
     }
 
     private func fraction(of node: DiskNode) -> Double {
-        guard let parent = node.parent, parent.size > 0 else { return 0 }
+        guard let parent = explorer.parent(of: node), parent.size > 0 else { return 0 }
         return Double(node.size) / Double(parent.size)
     }
 
@@ -354,12 +354,12 @@ private struct FolderTreeTable: View {
     private func icon(for node: DiskNode) -> some View {
         switch node.kind {
         case .folder:
-            Image(systemName: node.isUnreadable ? "lock.fill" : "folder.fill")
-                .foregroundStyle(node.dominantType?.color ?? .secondary)
+            Image(systemName: node.unreadable ? "lock.fill" : "folder.fill")
+                .foregroundStyle(node.fileType?.color ?? .secondary)
         case .file:
             Image(systemName: "doc.fill").foregroundStyle(node.fileType?.color ?? .secondary)
         case .smallFiles:
-            Image(systemName: "square.stack.3d.up.fill").foregroundStyle(node.dominantType?.color ?? .secondary)
+            Image(systemName: "square.stack.3d.up.fill").foregroundStyle(node.fileType?.color ?? .secondary)
         case .unattributed:
             Image(systemName: "questionmark.square.dashed").foregroundStyle(.secondary)
         }
@@ -423,14 +423,14 @@ private struct LargestFilesTable: View {
                     Image(systemName: "doc.fill").foregroundStyle(node.fileType?.color ?? .secondary)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(node.name).lineLimit(1).truncationMode(.middle)
-                        Text(node.parent.map { Format.tildePath(URL(fileURLWithPath: $0.path)) } ?? "")
+                        Text(node.url.map { Format.tildePath($0.deletingLastPathComponent()) } ?? "")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.head)
                     }
                 }
-                .help(Format.tildePath(URL(fileURLWithPath: node.path)))
+                .help(node.path.map(Format.tildePath) ?? node.name)
             }
             .width(min: 160, ideal: 300)
             TableColumn("Size") { node in
@@ -438,7 +438,7 @@ private struct LargestFilesTable: View {
             }
             .width(min: 64, ideal: 80)
         }
-        .contextMenu(forSelectionType: Int.self) { ids in
+        .contextMenu(forSelectionType: NodeID.self) { ids in
             DiskNodeActions(nodes: ids.compactMap(explorer.node(withID:)), onTrash: onTrash)
         } primaryAction: { ids in
             explorer.revealInFinder(ids.compactMap(explorer.node(withID:)))
@@ -447,7 +447,7 @@ private struct LargestFilesTable: View {
     }
 
     /// Selecting a file zooms the map to its folder and outlines it there.
-    private var selection: Binding<Set<Int>> {
+    private var selection: Binding<Set<NodeID>> {
         Binding(get: { explorer.selectedIDs }, set: { explorer.selectFromList($0) })
     }
 }

@@ -4,13 +4,13 @@ use crate::fsutil;
 use crate::progress::Progress;
 use crate::remove::Action;
 use crate::search;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Category {
     Caches,
@@ -400,7 +400,7 @@ fn downloads(age_days: u64, progress: &Progress) -> CategoryResult {
     let entries = match fs::read_dir(&folder) {
         Ok(entries) => entries,
         Err(_) => {
-            result.warnings.push(Warning { message: "Couldn't read your Downloads folder.".into(), needs_full_disk_access: false });
+            result.warnings.push(Warning { message: "Couldn't read your Downloads folder.".into(), needs_full_disk_access: cfg!(target_os = "macos") });
             return result;
         }
     };

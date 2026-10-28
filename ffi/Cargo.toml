@@ -1,0 +1,14 @@
+[package]
+name = "floorspace-ffi"
+description = "C interface to the Floorspace engine, used by the native Mac app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+floorspace-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

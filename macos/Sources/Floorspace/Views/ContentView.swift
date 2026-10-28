@@ -62,7 +62,7 @@ struct ContentView: View {
             lines.append("Permanently removed \(Format.count(report.permanentCount)) item\(report.permanentCount == 1 ? "" : "s") (\(Format.bytes(report.permanentlyFreed))).")
         }
         if !report.failures.isEmpty {
-            let examples = report.failures.prefix(5).map { "\u{2022} \($0.item.name): \($0.errorMessage ?? "")" }
+            let examples = report.failures.prefix(5).map { "\u{2022} \(Format.tildePath($0.target)): \($0.message ?? "")" }
             let more = report.failures.count > 5 ? ["\u{2022} \u{2026}and \(report.failures.count - 5) more"] : []
             lines.append("\(report.failures.count) couldn't be removed:\n" + (examples + more).joined(separator: "\n"))
         }

@@ -40,5 +40,6 @@
         "section": "utils"
       }
     }
-  }
+  },
+  "mainBinaryName": "Floorspace"
 }

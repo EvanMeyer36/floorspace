@@ -9,18 +9,14 @@ enum SidebarItem: Hashable {
     case category(ScanCategory)
 }
 
-struct DiskSpace {
-    var total: Int64 = 0
-    var free: Int64 = 0
-    var used: Int64 { max(0, total - free) }
-
-    static func current() -> DiskSpace {
-        let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [
-            .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
-        ])
-        return DiskSpace(total: Int64(values?.volumeTotalCapacity ?? 0),
-                         free: values?.volumeAvailableCapacityForImportantUsage ?? 0)
-    }
+/// What a cleanup did, for the summary shown afterwards.
+struct CleanReport: Identifiable {
+    let id = UUID()
+    let movedToTrash: Int64
+    let movedCount: Int
+    let permanentlyFreed: Int64
+    let permanentCount: Int
+    let failures: [Outcome]
 }
 
 @MainActor
@@ -37,7 +33,8 @@ final class AppModel: ObservableObject {
         didSet { saveSettings() }
     }
 
-    private var scanTasks: [ScanCategory: Task<ScanResult?, Never>] = [:]
+    /// Progress keys whose scans the user stopped; their (partial) results are dropped.
+    private var stopped: Set<String> = []
 
     init() {
         let defaults = UserDefaults.standard
@@ -57,44 +54,57 @@ final class AppModel: ObservableObject {
         defaults.set(settings.searchFolder.path, forKey: "searchFolder")
     }
 
-    // MARK: - Scanning
+    // MARK: - Scanning (in the engine)
 
     var isScanning: Bool { !activeScans.isEmpty }
 
+    /// Scans one category.
     func startScan(_ category: ScanCategory) {
         guard activeScans[category] == nil else { return }
-        let progress = ScanProgress()
-        let settings = settings
-        let task = Task.detached(priority: .userInitiated) { () -> ScanResult? in
-            let result = Scanners.scan(category, settings: settings, progress: progress)
-            return Task.isCancelled ? nil : result
-        }
+        let progress = ScanProgress(kind: "junk:\(category.rawValue)")
         activeScans[category] = progress
-        scanTasks[category] = task
-
+        stopped.remove(progress.kind)
+        var categoryArgs = settings.engineArgs
+        categoryArgs["category"] = category.rawValue
+        let args = categoryArgs
         Task {
-            let result = await task.value
-            guard activeScans[category] === progress else { return }
+            let result = try? await Engine.background { try Engine.call("junk_scan_category", args, as: EngineCategoryResult.self) }
             activeScans[category] = nil
-            scanTasks[category] = nil
-            if let result {
-                results[category] = result
-                selection[category] = Set(result.items.filter(\.isRecommended).map(\.id))
-            }
+            if let result, !stopped.contains(progress.kind) { store(ScanResult(result)) }
         }
+    }
+
+    /// Scans every category in one engine call, which walks the search folder only once.
+    func smartScan() {
+        guard !isScanning else { return }
+        disk = DiskSpace.current()
+        let progress = ScanProgress(kind: "junk")
+        stopped.remove(progress.kind)
+        for category in ScanCategory.allCases { activeScans[category] = progress }
+        let args = settings.engineArgs
+        Task {
+            let results = try? await Engine.background { try Engine.call("junk_scan", args, as: [EngineCategoryResult].self) }
+            activeScans = [:]
+            if let results, !stopped.contains(progress.kind) { results.map(ScanResult.init).forEach(store) }
+        }
+    }
+
+    private func store(_ result: ScanResult) {
+        results[result.category] = result
+        selection[result.category] = Set(result.items.filter(\.isRecommended).map(\.id))
     }
 
     func cancelScan(_ category: ScanCategory) {
-        scanTasks[category]?.cancel()
-    }
-
-    func smartScan() {
-        disk = DiskSpace.current()
-        ScanCategory.allCases.forEach(startScan)
+        guard let progress = activeScans[category] else { return }
+        stopped.insert(progress.kind)
+        progress.cancel()
     }
 
     func cancelAllScans() {
-        scanTasks.values.forEach { $0.cancel() }
+        for progress in Set(activeScans.values.map(\.kind)) {
+            stopped.insert(progress)
+            Engine.cancel(progress)
+        }
     }
 
     // MARK: - Selection
@@ -130,7 +140,7 @@ final class AppModel: ObservableObject {
 
     /// Sum of item sizes, counting each path once and skipping items inside an already-counted folder.
     func uniqueSize(_ items: [ScanItem]) -> Int64 {
-        CleanerEngine.removingNested(items).reduce(0) { $0 + $1.size }
+        items.outermost.reduce(0) { $0 + $1.size }
     }
 
     var totalReclaimable: Int64 {
@@ -143,24 +153,23 @@ final class AppModel: ObservableObject {
 
     // MARK: - Cleaning
 
+    /// Cleans the items in the engine (by ID from its latest results) and updates the lists.
     func clean(_ items: [ScanItem]) {
         guard !isCleaning, !items.isEmpty else { return }
         isCleaning = true
-
+        let ids = items.map(\.id)
         Task {
-            let outcomes = await Task.detached(priority: .userInitiated) { CleanerEngine.clean(items) }.value
+            let result = try? await Engine.background { try Engine.call("clean", ["itemIds": ids], as: EngineCleanResult.self) }
             isCleaning = false
-            apply(outcomes)
+            apply(result, requested: items)
         }
     }
 
-    private func apply(_ outcomes: [CleanOutcome]) {
-        let succeeded = outcomes.filter(\.succeeded)
-        let moved = succeeded.filter { $0.item.action == .moveToTrash }
-        let permanent = succeeded.filter { $0.item.action.isPermanent }
+    private func apply(_ result: EngineCleanResult?, requested: [ScanItem]) {
+        let cleanedIDs = Set(result?.cleaned ?? [])
+        let cleaned = requested.filter { cleanedIDs.contains($0.id) }
 
         // Drop cleaned items everywhere they appeared, including copies listed under other categories.
-        let cleanedIDs = Set(succeeded.map(\.item.id))
         for category in results.keys {
             results[category]?.items.removeAll { item in
                 cleanedIDs.contains(item.id) || (item.path.map { !DiskUtils.exists($0) } ?? false)
@@ -171,14 +180,14 @@ final class AppModel: ObservableObject {
         }
 
         cleanReport = CleanReport(
-            movedToTrash: moved.reduce(0) { $0 + $1.item.size },
-            movedCount: moved.count,
-            permanentlyFreed: permanent.reduce(0) { $0 + $1.item.size },
-            permanentCount: permanent.count,
-            failures: outcomes.filter { !$0.succeeded }
+            movedToTrash: result?.freedToTrash ?? 0,
+            movedCount: cleaned.filter { !$0.action.isPermanent }.count,
+            permanentlyFreed: result?.freedPermanently ?? 0,
+            permanentCount: cleaned.filter(\.action.isPermanent).count,
+            failures: result?.failures ?? [Outcome(target: "Floorspace", ok: false, message: "The engine couldn't run the cleanup.")]
         )
 
-        if !succeeded.isEmpty { startScan(.trash) }
+        if !cleaned.isEmpty { startScan(.trash) }
         disk = DiskSpace.current()
     }
 

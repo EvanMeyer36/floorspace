@@ -22,13 +22,13 @@ struct TreemapHeader: View {
             .disabled(explorer.focus?.parent == nil)
 
             if let focus = explorer.focus {
-                ForEach(focus.ancestors + [focus], id: \.id) { node in
+                ForEach(explorer.ancestors(of: focus) + [focus], id: \.id) { node in
                     if node.parent != nil {
                         Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                     }
                     Button(node.name) { explorer.focus = node }
                         .buttonStyle(.plain)
-                        .foregroundStyle(node === focus ? .primary : .secondary)
+                        .foregroundStyle(node.id == focus.id ? .primary : .secondary)
                         .lineLimit(1)
                 }
                 Text(Format.bytes(focus.size))
@@ -72,117 +72,139 @@ struct TreemapHeader: View {
     }
 }
 
+/// The engine's treemap layout for one folder and size, fetched off the main thread.
+@MainActor
+final class TreemapLayoutLoader: ObservableObject {
+    struct Layout {
+        var id = 0
+        var cells: [TreemapCell] = []
+        /// Cell indices under each cell (the last entry holds the top-level cells), for hit-testing.
+        var children: [[Int]] = [[]]
+    }
+
+    @Published private(set) var layout = Layout()
+    private var key: (NodeID, CGSize, Int)?
+    private var pending: Task<Void, Never>?
+
+    /// Asks for a new layout once resizing pauses; ignores repeats of the current request.
+    func request(focus: NodeID, size: CGSize, version: Int) {
+        if let key, key.0 == focus, key.1 == size, key.2 == version { return }
+        let sizeOnly = key.map { $0.0 == focus && $0.2 == version } ?? false
+        key = (focus, size, version)
+        pending?.cancel()
+        pending = Task {
+            if sizeOnly { try? await Task.sleep(nanoseconds: 120_000_000) }
+            guard !Task.isCancelled, size.width > 4, size.height > 4 else { return }
+            let args: [String: Any] = ["focus": focus, "width": Double(size.width), "height": Double(size.height)]
+            guard let cells = try? await Engine.background({ try Engine.call("treemap", args, as: [TreemapCell].self) }), !Task.isCancelled else { return }
+            var children: [[Int]] = Array(repeating: [], count: cells.count + 1)
+            for (i, cell) in cells.enumerated() { children[cell.parentCell ?? cells.count].append(i) }
+            layout = Layout(id: layout.id + 1, cells: cells, children: children)
+        }
+    }
+
+    /// The deepest cell under a point, walking down through folder cells.
+    func hit(_ point: CGPoint) -> Int? {
+        var level = layout.cells.count
+        var found: Int?
+        while let next = layout.children[level].first(where: { layout.cells[$0].rect.cgRect.contains(point) }) {
+            found = next
+            level = next
+        }
+        return found
+    }
+}
+
 struct TreemapView: View {
     @EnvironmentObject var explorer: ExplorerModel
     let onTrash: ([DiskNode]) -> Void
 
-    @State private var cache = LayoutCache()
-    @State private var hovered: TreemapCell?
+    @StateObject private var loader = TreemapLayoutLoader()
+    @State private var hovered: Int?
     @State private var hoverPoint: CGPoint = .zero
 
     var body: some View {
         GeometryReader { geo in
-            let bounds = CGRect(origin: .zero, size: geo.size)
-            let layout = cache.layout(for: explorer.focus, in: bounds, version: explorer.treeVersion)
+            let layout = loader.layout
+            let hoveredCell = hovered.flatMap { $0 < layout.cells.count ? layout.cells[$0] : nil }
 
-            TreemapCanvas(
-                cells: layout.cells,
-                layoutID: layout.id,
-                highlight: explorer.highlight,
-                selectedIDs: explorer.selectedIDs
-            )
-            .equatable()
-            .overlay {
-                if let rect = hovered?.rect {
-                    Rectangle()
-                        .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                        .allowsHitTesting(false)
+            TreemapCanvas(cells: layout.cells, layoutID: layout.id, highlight: explorer.highlight, selectedIDs: explorer.selectedIDs)
+                .equatable()
+                .overlay {
+                    if let rect = hoveredCell?.rect.cgRect {
+                        Rectangle()
+                            .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+                            .allowsHitTesting(false)
+                    }
                 }
-            }
-            .overlay(alignment: .topLeading) {
-                if let hovered {
-                    Tooltip(cell: hovered, focus: explorer.focus)
-                        .fixedSize()
-                        .alignmentGuide(.leading) { d in
-                            -min(hoverPoint.x + 16, max(0, geo.size.width - d.width - 4))
-                        }
-                        .alignmentGuide(.top) { d in
-                            -min(hoverPoint.y + 16, max(0, geo.size.height - d.height - 4))
-                        }
-                        .allowsHitTesting(false)
+                .overlay(alignment: .topLeading) {
+                    if let hoveredCell {
+                        Tooltip(cell: hoveredCell, focus: explorer.focus)
+                            .fixedSize()
+                            .alignmentGuide(.leading) { d in -min(hoverPoint.x + 16, max(0, geo.size.width - d.width - 4)) }
+                            .alignmentGuide(.top) { d in -min(hoverPoint.y + 16, max(0, geo.size.height - d.height - 4)) }
+                            .allowsHitTesting(false)
+                    }
                 }
-            }
-            .contentShape(Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let point):
-                    hoverPoint = point
-                    let cell = layout.cells.last { $0.rect.contains(point) }
-                    if cell?.rect != hovered?.rect { hovered = cell }
-                case .ended:
-                    hovered = nil
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let point):
+                        hoverPoint = point
+                        let cell = loader.hit(point)
+                        if cell != hovered { hovered = cell }
+                    case .ended:
+                        hovered = nil
+                    }
                 }
-            }
-            .onTapGesture(count: 2) { drillDown() }
-            .onTapGesture {
-                explorer.selectFromMap(hovered?.node, toggling: NSEvent.modifierFlags.contains(.command))
-            }
-            .contextMenu {
-                // Right-clicking inside the selection acts on all of it; elsewhere, on the item under the pointer.
-                if let node = hovered?.node {
-                    let nodes = explorer.selectedIDs.contains(node.id) ? explorer.selectedNodes : [node]
-                    DiskNodeActions(nodes: nodes, onTrash: onTrash)
+                .onTapGesture(count: 2) { drillDown(hoveredCell) }
+                .onTapGesture {
+                    explorer.selectFromMap(hoveredCell?.node, toggling: NSEvent.modifierFlags.contains(.command))
                 }
-            }
+                .contextMenu {
+                    // Right-clicking inside the selection acts on all of it; elsewhere, on the item under the pointer.
+                    if let id = hoveredCell?.node, let node = explorer.node(withID: id) {
+                        let nodes = explorer.selectedIDs.contains(id) ? explorer.selectedNodes : [node]
+                        DiskNodeActions(nodes: nodes, onTrash: onTrash)
+                    }
+                }
+                .onAppear { request(geo.size) }
+                .onChange(of: geo.size) { request($1) }
+                .onChange(of: explorer.focus?.id) { request(geo.size) }
+                .onChange(of: explorer.treeVersion) { request(geo.size) }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func request(_ size: CGSize) {
+        guard let focus = explorer.focus else { return }
+        hovered = nil
+        loader.request(focus: focus.id, size: size, version: explorer.treeVersion)
     }
 
     /// Double-click zooms into the top-level block under the pointer, one level at a time.
     /// On a "more items" sliver it jumps straight into the folder holding them; on grouped
     /// small files it opens their folder in Finder, since they aren't kept individually.
-    private func drillDown() {
-        guard let cell = hovered, let focus = explorer.focus else { return }
-        if cell.node == nil, let container = cell.container {
-            if container !== focus {
-                explorer.zoom(into: container)
-                hovered = nil
+    private func drillDown(_ cell: TreemapCell?) {
+        guard let cell, let focus = explorer.focus else { return }
+        if cell.kind == .sliver, let container = cell.container {
+            if container != focus.id, let folder = explorer.node(withID: container) { explorer.zoom(into: folder) }
+            return
+        }
+        guard let id = cell.node, let node = explorer.node(withID: id) else { return }
+        switch cell.kind {
+        case .smallFiles:
+            if let folder = explorer.parent(of: node) { explorer.revealInFinder(folder) }
+        case .file:
+            explorer.revealInFinder(node)
+        default:
+            // Zoom one level: the ancestor of this block that's a direct child of the current folder.
+            let chain = explorer.ancestors(of: node) + [node]
+            if let index = chain.firstIndex(where: { $0.id == focus.id }), index + 1 < chain.count {
+                explorer.zoom(into: chain[index + 1])
             }
-            return
-        }
-        guard let node = cell.node else { return }
-        if case .smallFiles = node.kind {
-            if let folder = node.parent { explorer.revealInFinder(folder) }
-            return
-        }
-        var target = node
-        while let parent = target.parent, parent !== focus { target = parent }
-        if target.isFolder {
-            explorer.zoom(into: target)
-            hovered = nil
-        } else {
-            explorer.revealInFinder(target)
-        }
-    }
-
-    final class LayoutCache {
-        struct Layout {
-            let id: Int
-            let cells: [TreemapCell]
-        }
-
-        private var key: (ObjectIdentifier?, CGSize, Int)?
-        private var current = Layout(id: 0, cells: [])
-
-        func layout(for focus: DiskNode?, in bounds: CGRect, version: Int) -> Layout {
-            let newKey = (focus.map(ObjectIdentifier.init), bounds.size, version)
-            if let key, key.0 == newKey.0, key.1 == newKey.1, key.2 == newKey.2 { return current }
-            key = newKey
-            let cells = focus.map { TreemapLayout.layout($0, in: bounds) } ?? []
-            current = Layout(id: current.id + 1, cells: cells)
-            return current
         }
     }
 }
@@ -193,7 +215,7 @@ private struct TreemapCanvas: View, Equatable {
     let cells: [TreemapCell]
     let layoutID: Int
     let highlight: ExplorerModel.Highlight?
-    let selectedIDs: Set<Int>
+    let selectedIDs: Set<NodeID>
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.layoutID == rhs.layoutID && lhs.highlight == rhs.highlight && lhs.selectedIDs == rhs.selectedIDs
@@ -204,33 +226,35 @@ private struct TreemapCanvas: View, Equatable {
             var selectedRects: [CGRect] = []
 
             for cell in cells {
-                let rect = cell.rect
-                guard let node = cell.node else {
-                    // Sliver standing in for many tiny items: tinted with the biggest one's type.
-                    fillBlock(rect, type: cell.fillType, opacity: 0.6, context: context)
-                    continue
-                }
-                if selectedIDs.contains(node.id) { selectedRects.append(rect) }
+                let rect = cell.rect.cgRect
+                if let id = cell.node, selectedIDs.contains(id) { selectedRects.append(rect) }
 
-                switch node.kind {
-                case .folder where cell.isCollapsed:
-                    fillBlock(rect, type: node.dominantType, opacity: 0.85, context: context)
+                switch cell.kind {
+                case .sliver:
+                    // Stands in for many tiny items: tinted with the biggest one's type.
+                    fillBlock(rect, type: cell.fileType, opacity: 0.6, context: context)
+                case .collapsedFolder:
+                    fillBlock(rect, type: cell.fileType, opacity: 0.85, context: context)
                 case .folder:
                     // Nested fills would stack into mud, so only top-level folders are shaded.
                     if cell.depth == 1 {
                         context.fill(Path(rect), with: .color(Color.primary.opacity(0.05)))
                     }
                     context.stroke(Path(rect.insetBy(dx: 0.25, dy: 0.25)), with: .color(Color.primary.opacity(0.16)), lineWidth: 0.5)
-                    if let header = cell.headerRect {
+                    if let header = cell.header?.cgRect {
                         context.fill(Path(header.insetBy(dx: 0.5, dy: 0.5)), with: .color(Color.primary.opacity(0.06)))
-                        drawLabel("\(node.name)  \(Format.bytes(node.size))", in: header, context: context)
+                        drawLabel("\(cell.name)  \(Format.bytes(cell.size))", in: header, context: context)
                     }
                 case .file:
-                    let dimmed = highlight.map { !$0.matches(node) } ?? false
-                    context.fill(Path(rect.insetBy(dx: 0.5, dy: 0.5)),
-                                 with: .color((node.fileType ?? .other).color.opacity(dimmed ? 0.15 : 1)))
+                    let dimmed: Bool
+                    switch highlight {
+                    case .none: dimmed = false
+                    case .fileType(let wanted): dimmed = cell.fileType != wanted
+                    case .fileExtension(let ext): dimmed = Self.fileExtension(cell.name) != ext
+                    }
+                    context.fill(Path(rect.insetBy(dx: 0.5, dy: 0.5)), with: .color((cell.fileType ?? .other).color.opacity(dimmed ? 0.15 : 1)))
                 case .smallFiles:
-                    fillBlock(rect, type: node.dominantType, opacity: 0.75, context: context)
+                    fillBlock(rect, type: cell.fileType, opacity: 0.75, context: context)
                 case .unattributed:
                     // Not files at all, so no file-type color: a hatched block that reads as "unknown".
                     let inner = rect.insetBy(dx: 0.5, dy: 0.5)
@@ -246,7 +270,7 @@ private struct TreemapCanvas: View, Equatable {
                     }
                     hatch.stroke(stripes, with: .color(Color.primary.opacity(0.12)), lineWidth: 1)
                     if rect.width > 120 && rect.height > 40 {
-                        drawLabel(node.name + "  " + Format.bytes(node.size), in: rect.insetBy(dx: 6, dy: 6), context: context, centered: true)
+                        drawLabel(cell.name + "  " + Format.bytes(cell.size), in: rect.insetBy(dx: 6, dy: 6), context: context, centered: true)
                     }
                 }
             }
@@ -256,6 +280,11 @@ private struct TreemapCanvas: View, Equatable {
                 context.stroke(Path(rect.insetBy(dx: 1, dy: 1)), with: .color(Color(nsColor: .windowBackgroundColor)), lineWidth: 1)
             }
         }
+    }
+
+    static func fileExtension(_ name: String) -> String {
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return "" }
+        return name[name.index(after: dot)...].lowercased()
     }
 
     /// Solid block in its file-type color; faded when another type is highlighted.
@@ -284,48 +313,51 @@ private struct TreemapCanvas: View, Equatable {
 }
 
 private struct Tooltip: View {
+    @EnvironmentObject var explorer: ExplorerModel
     let cell: TreemapCell
     let focus: DiskNode?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            if let node = cell.node {
-                Text(node.name).font(.callout.weight(.semibold)).lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(Format.bytes(node.size)).monospacedDigit()
-                    if let focus, focus.size > 0 {
-                        Text(String(format: "%.1f%% of %@", Double(node.size) / Double(focus.size) * 100, focus.name))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.callout)
-                if let type = node.fileType {
-                    Text(type.title).font(.caption).foregroundStyle(.secondary)
-                }
-                if node.isOnDisk {
-                    Text(Format.tildePath(URL(fileURLWithPath: node.path)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: 360, alignment: .leading)
-                }
-                if node.isUnreadable {
-                    Text("macOS didn't let Floorspace look inside.").font(.caption).foregroundStyle(.secondary)
-                }
-                if case .smallFiles = node.kind {
-                    hint("Files under 256 KB each, grouped so big scans stay fast.\nDouble-click to open the folder in Finder.")
-                } else if cell.isCollapsed {
-                    hint("Double-click to zoom in and see what's inside.")
-                }
-            } else {
+            if cell.kind == .sliver {
                 Text("\(Format.count(cell.hiddenCount)) more items").font(.callout.weight(.semibold))
-                if let container = cell.container {
+                if let container = cell.container.flatMap(explorer.node(withID:)) {
                     Text(container.name).font(.caption).foregroundStyle(.secondary)
-                    if container === focus {
+                    if container.id == focus?.id {
                         hint("Each is too small to draw at this size. Find them in the folder tree or Largest Files.")
                     } else {
                         hint("Too small to draw here. Double-click to zoom into this folder.")
                     }
+                }
+            } else {
+                Text(cell.name).font(.callout.weight(.semibold)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(Format.bytes(cell.size)).monospacedDigit()
+                    if let focus, focus.size > 0 {
+                        Text(String(format: "%.1f%% of %@", Double(cell.size) / Double(focus.size) * 100, focus.name))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.callout)
+                if cell.kind == .file, let type = cell.fileType {
+                    Text(type.title).font(.caption).foregroundStyle(.secondary)
+                }
+                if let node = cell.node.flatMap(explorer.node(withID:)) {
+                    if let path = node.path {
+                        Text(Format.tildePath(path))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .frame(maxWidth: 360, alignment: .leading)
+                    }
+                    if node.unreadable {
+                        Text("macOS didn't let Floorspace look inside.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if cell.kind == .smallFiles {
+                    hint("Files under 256 KB each, grouped so big scans stay fast.\nDouble-click to open the folder in Finder.")
+                } else if cell.kind == .collapsedFolder {
+                    hint("Double-click to zoom in and see what's inside.")
                 }
             }
         }

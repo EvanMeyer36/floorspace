@@ -25,3 +25,6 @@ desktop/src-tauri/gen/
 
 # Local UI fixture (real data from this machine)
 desktop/src/dev/fixture.json
+
+# Rust engine library built for the Mac app
+macos/rust/

@@ -89,7 +89,8 @@ pub fn scan(root: &Path, options: &Options, progress: &Progress) -> SearchResult
     let warning = (!unreadable.is_empty()).then(|| {
         let examples: Vec<String> = unreadable.iter().take(3).map(|p| fsutil::tilde(p)).collect();
         let more = if unreadable.len() > 3 { format!(" and {} more", unreadable.len() - 3) } else { String::new() };
-        Warning { message: format!("Couldn't look inside {}{more}, so those weren't searched.", examples.join(", ")), needs_full_disk_access: false }
+        // On macOS these are privacy-protected folders, which Full Disk Access opens up.
+        Warning { message: format!("Couldn't look inside {}{more}, so those weren't searched.", examples.join(", ")), needs_full_disk_access: cfg!(target_os = "macos") }
     });
 
     let mut large = CategoryResult { category: Category::LargeFiles, items: walk.large.into_inner().unwrap_or_default(), warnings: warning.clone().into_iter().collect() };
@@ -102,11 +103,15 @@ pub fn scan(root: &Path, options: &Options, progress: &Progress) -> SearchResult
     };
 
     let duplicates = if options.find_duplicates {
-        CategoryResult {
-            category: Category::Duplicates,
-            items: find_duplicates(walk.candidates.into_inner().unwrap_or_default(), progress),
-            warnings: warning.into_iter().collect(),
+        let (items, clones) = find_duplicates(walk.candidates.into_inner().unwrap_or_default(), progress);
+        let mut warnings: Vec<Warning> = warning.into_iter().collect();
+        if clones > 0 {
+            warnings.push(Warning {
+                message: format!("Left out {clones} cop{} that macOS stores as clones of another file. They share storage, so deleting them would free almost nothing.", if clones == 1 { "y" } else { "ies" }),
+                needs_full_disk_access: false,
+            });
         }
+        CategoryResult { category: Category::Duplicates, items, warnings }
     } else {
         CategoryResult { category: Category::Duplicates, items: Vec::new(), warnings: Vec::new() }
     };
@@ -193,8 +198,9 @@ fn node_modules_item(path: PathBuf, options: &Options, progress: &Progress) -> I
 }
 
 /// Same size, then same first 64 KB, then same full BLAKE3 hash. The oldest copy in each group is
-/// suggested to keep.
-fn find_duplicates(candidates: Vec<Candidate>, progress: &Progress) -> Vec<Item> {
+/// suggested to keep. APFS clones of a copy already in the group are left out (they free nothing);
+/// returns how many were.
+fn find_duplicates(candidates: Vec<Candidate>, progress: &Progress) -> (Vec<Item>, usize) {
     let mut by_len: HashMap<u64, Vec<Candidate>> = HashMap::new();
     for c in candidates {
         by_len.entry(c.len).or_default().push(c);
@@ -235,20 +241,34 @@ fn find_duplicates(candidates: Vec<Candidate>, progress: &Progress) -> Vec<Item>
 
     groups.sort_by_key(|g| std::cmp::Reverse(g[0].allocated * g.len() as u64));
     let mut items = Vec::new();
-    for (index, mut group) in groups.into_iter().enumerate() {
+    let mut clones = 0;
+    let mut index = 0;
+    for mut group in groups {
         group.sort_by(|a, b| a.created.cmp(&b.created).then(a.path.as_os_str().len().cmp(&b.path.as_os_str().len())));
+        let mut seen_clone_ids = std::collections::HashSet::new();
+        group.retain(|c| match fsutil::clone_id(&c.path) {
+            Some(id) if !seen_clone_ids.insert(id) => {
+                clones += 1;
+                false
+            }
+            _ => true,
+        });
+        if group.len() < 2 {
+            continue;
+        }
+        index += 1;
         for (position, c) in group.into_iter().enumerate() {
             let keeper = position == 0;
             let folder = c.path.parent().map(fsutil::tilde).unwrap_or_default();
             let detail = if keeper { format!("{folder} \u{2022} oldest copy, suggested to keep") } else { folder };
             let name = c.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let mut item = Item::at(Category::Duplicates, c.path, c.allocated, name, detail, false);
-            item.group = Some(index as u32 + 1);
+            item.group = Some(index);
             item.keeper = keeper;
             items.push(item);
         }
     }
-    items
+    (items, clones)
 }
 
 /// BLAKE3 of the first `limit` bytes, or the whole file. `None` if unreadable.

@@ -79,6 +79,8 @@ pub struct InstalledApp {
     /// Extra context shown with the app (e.g. "only a Steam shortcut").
     pub note: Option<String>,
     pub removal: Option<Removal>,
+    /// Removing it asks for an administrator password (system-owned app, system-wide package, ...).
+    pub needs_password: bool,
 }
 
 impl InstalledApp {
@@ -90,9 +92,6 @@ impl InstalledApp {
         self.size + self.leftovers_size()
     }
 
-    pub fn needs_admin(&self) -> bool {
-        matches!(self.removal, Some(Removal::Command { admin: true, .. }))
-    }
 }
 
 #[derive(Debug, Clone)]

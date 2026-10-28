@@ -15,7 +15,40 @@ pub fn list(progress: &Progress, include_sandboxed_data: bool) -> Vec<InstalledA
     let library = LibraryIndex::new(include_sandboxed_data);
     let apps = find_apps();
     progress.set_phase(format!("Measuring {} apps", apps.len()));
-    apps.par_iter().map(|path| inspect(path, &library, progress)).collect()
+    let opened = spotlight_last_used(&apps);
+    apps.par_iter()
+        .zip(opened.par_iter())
+        .map(|(path, spotlight)| {
+            let mut app = inspect(path, &library, progress);
+            // Spotlight misses apps opened from the Dock; the program file's access time covers those.
+            app.last_used = app.last_used.max(*spotlight);
+            app
+        })
+        .collect()
+}
+
+/// When Spotlight last saw each app opened (kMDItemLastUsedDate), in one `mdls` call.
+fn spotlight_last_used(apps: &[PathBuf]) -> Vec<Option<u64>> {
+    let output = Command::new("mdls").args(["-raw", "-name", "kMDItemLastUsedDate"]).args(apps).output();
+    let text = output.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let mut values: Vec<Option<u64>> = text.split('\0').map(parse_mdls_date).collect();
+    values.resize(apps.len(), None);
+    values
+}
+
+/// "2026-10-21 23:32:52 +0000" -> Unix seconds. "(null)" -> None.
+pub(crate) fn parse_mdls_date(text: &str) -> Option<u64> {
+    let mut parts = text.trim().split([' ', '-', ':']);
+    let mut next = || parts.next()?.parse::<i64>().ok();
+    let (y, m, d, hh, mm, ss) = (next()?, next()?, next()?, next()?, next()?, next()?);
+    // Days from the civil calendar (Howard Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hh * 3_600 + mm * 60 + ss).ok()
 }
 
 /// Apps directly in the app folders, plus one level of subfolders (e.g. /Applications/Utilities).
@@ -77,6 +110,7 @@ fn inspect(path: &Path, library: &LibraryIndex, progress: &Progress) -> Installe
             None
         },
         removal: Some(Removal::Trash { path: path.to_path_buf() }),
+        needs_password: !movable,
         name,
     }
 }
@@ -240,6 +274,13 @@ pub(crate) fn belongs(name: &str, bundle_id: &str, folder: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spotlight_dates() {
+        assert_eq!(parse_mdls_date("1970-01-02 00:00:10 +0000"), Some(86_410));
+        assert_eq!(parse_mdls_date("2026-10-21 23:32:52 +0000"), Some(1_792_625_572));
+        assert_eq!(parse_mdls_date("(null)"), None);
+    }
 
     #[test]
     fn leftover_matching_is_exact() {

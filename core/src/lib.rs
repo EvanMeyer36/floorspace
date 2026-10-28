@@ -16,6 +16,7 @@ pub mod fsutil;
 pub mod progress;
 pub mod remove;
 pub mod search;
+pub mod session;
 pub mod tree;
 pub mod treemap;
 

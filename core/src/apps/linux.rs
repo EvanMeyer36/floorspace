@@ -72,6 +72,7 @@ fn flatpaks() -> Vec<InstalledApp> {
                 last_used: unix_time(&data, true),
                 protection: None,
                 note: None,
+                needs_password: installation == "system",
                 removal: Some(Removal::Command {
                     program: "flatpak".into(),
                     args: vec!["uninstall".into(), "-y".into(), format!("--{installation}"), id],
@@ -145,6 +146,7 @@ fn snaps() -> Vec<InstalledApp> {
                 protection: None,
                 note: None,
                 removal: Some(Removal::Command { program: "pkexec".into(), args: vec!["snap".into(), "remove".into(), name.clone()], admin: true }),
+                needs_password: true,
                 name,
             }
         })
@@ -194,6 +196,7 @@ fn appimages() -> Vec<InstalledApp> {
                 protection: None,
                 note: None,
                 removal: Some(Removal::Trash { path: path.clone() }),
+                needs_password: false,
                 name,
             }
         })
@@ -296,6 +299,7 @@ fn packages(progress: &Progress) -> Vec<InstalledApp> {
                     Manager::Rpm => Removal::Command { program: "pkexec".into(), args: vec!["dnf".into(), "remove".into(), "-y".into(), package.clone()], admin: true },
                     Manager::Pacman => Removal::Command { program: "pkexec".into(), args: vec!["pacman".into(), "-R".into(), "--noconfirm".into(), package.clone()], admin: true },
                 }),
+                needs_password: true,
                 name,
             }
         })

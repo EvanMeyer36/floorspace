@@ -119,7 +119,7 @@ export function Apps({ platform, confirm, onDiskChanged }: { platform: Platform;
                   {a.name}
                   {sourceLabel[a.source] && <Badge>{sourceLabel[a.source]}</Badge>}
                   {a.protection && <Badge><Icon name="lock" size={10} /> Protected</Badge>}
-                  {a.removal?.type === "command" && a.removal.admin && <Badge>Needs password</Badge>}
+                  {a.needsPassword && !a.protection && <Badge>Needs password</Badge>}
                 </div>
                 <div className="small faint">{[a.version, a.publisher].filter(Boolean).join(" · ")}</div>
               </div>

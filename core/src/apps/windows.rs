@@ -92,6 +92,8 @@ fn app_from_entry(entry: Entry) -> InstalledApp {
         protection: entry.no_remove.then(|| "Its installer doesn't allow removing it.".to_string()),
         note: None,
         removal: entry.uninstall.as_deref().map(|u| Removal::Uninstaller { command: uninstall_command(u) }),
+        // Uninstallers that need it show their own UAC prompt.
+        needs_password: false,
         name: entry.name,
     }
 }
@@ -236,6 +238,7 @@ pub(crate) fn parse_store_apps(json: &str) -> Vec<InstalledApp> {
                     args: vec!["-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), format!("Remove-AppxPackage -Package {full_name}")],
                     admin: false,
                 }),
+                needs_password: false,
             })
         })
         .collect()

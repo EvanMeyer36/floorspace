@@ -1,6 +1,54 @@
 import AppKit
 import Foundation
 
+/// A file or folder an app left in ~/Library (caches, settings, saved data).
+struct RelatedItem: Identifiable, Hashable, Sendable {
+    let url: URL
+    /// Nil when macOS wouldn't let the engine measure it.
+    let size: Int64?
+    let kind: String
+    /// Found by the app's name rather than its bundle ID, so slightly less certain.
+    let matchedByName: Bool
+    var id: String { url.path }
+}
+
+/// An installed app as listed by the engine.
+struct InstalledApp: Identifiable, Sendable {
+    let id: String
+    let url: URL
+    let name: String
+    let bundleID: String?
+    let version: String?
+    let appSize: Int64
+    let related: [RelatedItem]
+    let lastUsed: Date?
+    let isAppStore: Bool
+    /// Why this app can't be uninstalled here, if it can't.
+    let protectionReason: String?
+    let note: String?
+    let needsPassword: Bool
+
+    init(_ app: EngineApp) {
+        id = app.id
+        url = URL(fileURLWithPath: app.location ?? app.id)
+        name = app.name
+        bundleID = app.identifier
+        version = app.version
+        appSize = app.size
+        related = app.leftovers.map { RelatedItem(url: URL(fileURLWithPath: $0.path), size: $0.size, kind: $0.kind, matchedByName: $0.matchedByName) }
+        lastUsed = app.lastUsed.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        isAppStore = app.source == "macAppStore"
+        protectionReason = app.protection
+        note = app.note
+        needsPassword = app.needsPassword
+    }
+
+    /// The app is only a Steam launcher; the game itself lives in the Steam library.
+    var isSteamShortcut: Bool { note?.hasPrefix("Only a Steam shortcut") == true }
+    var relatedSize: Int64 { related.reduce(0) { $0 + ($1.size ?? 0) } }
+    var totalSize: Int64 { appSize + relatedSize }
+}
+
 @MainActor
 final class AppsModel: ObservableObject {
     enum SortOrder: String, CaseIterable, Identifiable {
@@ -65,19 +113,19 @@ final class AppsModel: ObservableObject {
         return !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
     }
 
-    // MARK: - Scanning
+    // MARK: - Scanning (in the engine)
 
+    /// - Parameter includeOtherAppsData: also measure apps' sandboxed data, which macOS asks the user about.
     func scan(includeOtherAppsData: Bool = true) {
         guard progress == nil else { return }
-        let progress = ScanProgress()
-        self.progress = progress
+        progress = ScanProgress(kind: "apps")
         Task {
-            let found = await Task.detached(priority: .userInitiated) {
-                AppsScanner.scan(includeOtherAppsData: includeOtherAppsData, progress: progress)
-            }.value
-            apps = found
-            selectedIDs = selectedIDs.intersection(found.map(\.id))
-            self.progress = nil
+            let found = (try? await Engine.background {
+                try Engine.call("apps_list", ["includeSandboxedData": includeOtherAppsData], as: [EngineApp].self)
+            }) ?? []
+            apps = found.map(InstalledApp.init)
+            selectedIDs = selectedIDs.intersection(apps.map(\.id))
+            progress = nil
         }
     }
 
@@ -94,6 +142,8 @@ final class AppsModel: ObservableObject {
         }
     }
 
+    /// Uninstalls in the engine: it quits the app if it's open, moves it to the Trash (through Finder,
+    /// with a password, when the system owns it) and moves the leftovers the user left ticked.
     func uninstall(_ targets: [InstalledApp]) {
         let removable = targets.filter { $0.protectionReason == nil }
         guard !removable.isEmpty, !isUninstalling else { return }
@@ -102,24 +152,20 @@ final class AppsModel: ObservableObject {
         Task {
             var report = UninstallReport()
             for app in removable {
-                if isRunning(app), !(await quit(app)) {
-                    report.failures.append((app.name, "It's still running. Quit it and try again."))
+                let keep = app.related.filter { keptRelatedPaths.contains($0.id) }.map(\.url.path)
+                let result = try? await Engine.background {
+                    try Engine.call("apps_uninstall", ["appId": app.id, "keep": keep], as: EngineUninstallReport.self)
+                }
+                guard let result else {
+                    report.failures.append((app.name, "The engine couldn't uninstall it."))
                     continue
                 }
-                guard await moveAppToTrash(app.url) else {
-                    report.failures.append((app.name, "macOS didn't allow it to be moved to the Trash."))
-                    continue
+                for failure in result.outcomes where !failure.ok {
+                    report.failures.append((Format.tildePath(failure.target), failure.message ?? ""))
                 }
-                report.removedApps.append(app.name)
-                report.movedBytes += app.appSize
-
-                for item in relatedToRemove(for: app) {
-                    do {
-                        try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
-                        report.movedBytes += item.size ?? 0
-                    } catch {
-                        report.failures.append(("\(app.name): \(item.url.lastPathComponent)", error.localizedDescription))
-                    }
+                if result.removed {
+                    report.removedApps.append(app.name)
+                    report.movedBytes += app.appSize + relatedToRemove(for: app).reduce(0) { $0 + ($1.size ?? 0) }
                 }
             }
 
@@ -129,33 +175,6 @@ final class AppsModel: ObservableObject {
             isUninstalling = false
             self.report = report
         }
-    }
-
-    /// Asks the app to quit (it may show its own "save changes?" prompt) and waits up to 10 seconds.
-    private func quit(_ app: InstalledApp) async -> Bool {
-        guard let bundleID = app.bundleID else { return false }
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).forEach { $0.terminate() }
-        for _ in 0..<50 {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            if !isRunning(app) { return true }
-        }
-        return false
-    }
-
-    /// Apps owned by the system (most App Store apps) can't be moved by a normal app, so
-    /// those are handed to Finder, which asks for an administrator password like it does
-    /// when you drag them to the Trash yourself.
-    private func moveAppToTrash(_ url: URL) async -> Bool {
-        if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil { return true }
-
-        // The path goes in as an argument, never pasted into the script, so no file name can change what it does.
-        let script = ["on run argv", "tell application \"Finder\" to delete (POSIX file (item 1 of argv) as alias)", "end run"]
-        let arguments = script.flatMap { ["-e", $0] } + [url.path]
-        return await Task.detached {
-            // Generous timeout: Finder waits while the user types their password.
-            let result = Shell.run("/usr/bin/osascript", arguments, timeout: 300)
-            return result?.succeeded == true && !DiskUtils.exists(url)
-        }.value
     }
 
     // MARK: - Finder

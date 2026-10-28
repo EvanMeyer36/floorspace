@@ -11,7 +11,6 @@ export interface Platform {
   home: string;
   disk: DiskSpace;
   trashName: string;
-  fileTypes: [FileType, string][];
 }
 export interface Snapshot { itemsSeen: number; phase: string; currentPath: string }
 
@@ -90,6 +89,7 @@ export interface InstalledApp {
   protection: string | null;
   note: string | null;
   removal: { type: "trash" } | { type: "uninstaller" } | { type: "command"; admin: boolean } | null;
+  needsPassword: boolean;
 }
 export interface UninstallReport { removed: boolean; outcomes: Outcome[]; wouldAlsoRemove: string[] }
 

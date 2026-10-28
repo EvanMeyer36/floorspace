@@ -162,3 +162,26 @@ fn moves_files_to_the_trash() {
     assert!(outcomes[0].ok, "{:?}", outcomes[0].message);
     assert!(!dir.path().join("junk").exists());
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn apfs_clones_are_not_offered_as_duplicates() {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let dir = tempfile::tempdir().unwrap();
+    write(&dir.path().join("a.jpg"), 700_000, 5);
+    // Not fs::copy: on macOS that makes an APFS clone itself.
+    fs::write(dir.path().join("real-copy.jpg"), fs::read(dir.path().join("a.jpg")).unwrap()).unwrap();
+    let (src, dst) = (dir.path().join("a.jpg"), dir.path().join("clone.jpg"));
+    let (src, dst) = (CString::new(src.as_os_str().as_bytes()).unwrap(), CString::new(dst.as_os_str().as_bytes()).unwrap());
+    assert_eq!(unsafe { libc::clonefile(src.as_ptr(), dst.as_ptr(), 0) }, 0, "clonefile failed (not APFS?)");
+    assert_eq!(fsutil::clone_id(&dir.path().join("a.jpg")), fsutil::clone_id(&dir.path().join("clone.jpg")));
+    assert_ne!(fsutil::clone_id(&dir.path().join("a.jpg")), fsutil::clone_id(&dir.path().join("real-copy.jpg")));
+
+    let settings = Settings { search_root: dir.path().into(), ..Settings::default() };
+    let found = search::scan(dir.path(), &search::Options::from(&settings), &Progress::new());
+    let names: Vec<&str> = found.duplicates.items.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(names.len(), 2, "got {names:?}");
+    assert!(names.contains(&"real-copy.jpg"));
+    assert!(found.duplicates.warnings.iter().any(|w| w.message.contains("clones")));
+}

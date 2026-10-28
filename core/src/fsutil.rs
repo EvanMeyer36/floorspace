@@ -48,6 +48,44 @@ pub fn device(meta: &Metadata) -> Option<u64> {
     }
 }
 
+/// macOS: an ID shared by a file and its APFS clones (copies that share storage until changed).
+/// Two files with the same ID take the space of one, so deleting either frees almost nothing.
+pub fn clone_id(path: &Path) -> Option<u64> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        const ATTR_CMN_RETURNED_ATTRS: u32 = 0x8000_0000;
+        const ATTR_CMNEXT_CLONEID: u32 = 0x0000_0100;
+        const FSOPT_NOFOLLOW: u32 = 0x1;
+        const FSOPT_ATTR_CMN_EXTENDED: u32 = 0x20;
+        #[repr(C)]
+        struct AttrList { bitmapcount: u16, reserved: u16, commonattr: u32, volattr: u32, dirattr: u32, fileattr: u32, forkattr: u32 }
+        #[repr(C, packed(4))]
+        struct Reply { length: u32, returned: [u32; 5], clone_id: u64 }
+
+        let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
+        let mut request = AttrList { bitmapcount: 5, reserved: 0, commonattr: ATTR_CMN_RETURNED_ATTRS, volattr: 0, dirattr: 0, fileattr: 0, forkattr: ATTR_CMNEXT_CLONEID };
+        let mut reply: Reply = unsafe { std::mem::zeroed() };
+        let rc = unsafe {
+            libc::getattrlist(
+                c_path.as_ptr(),
+                &mut request as *mut AttrList as *mut libc::c_void,
+                &mut reply as *mut Reply as *mut libc::c_void,
+                std::mem::size_of::<Reply>(),
+                FSOPT_NOFOLLOW | FSOPT_ATTR_CMN_EXTENDED,
+            )
+        };
+        let returned_fork = reply.returned[4];
+        (rc == 0 && returned_fork & ATTR_CMNEXT_CLONEID != 0).then_some(reply.clone_id)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 /// A cloud file that isn't downloaded (OneDrive/iCloud "online-only"). Reading one would start a
 /// download, so content checks like duplicate hashing must skip it.
 pub fn is_cloud_placeholder(meta: &Metadata) -> bool {

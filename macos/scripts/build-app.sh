@@ -21,6 +21,9 @@ if [[ ! -f AppBundle/AppIcon.icns ]]; then
     swift scripts/make-icon.swift
 fi
 
+# The shared Rust engine, linked into the app as a static library.
+if $UNIVERSAL; then ./scripts/build-rust.sh --universal; else ./scripts/build-rust.sh; fi
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 

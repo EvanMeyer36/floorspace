@@ -1,6 +1,68 @@
 import AppKit
 import Foundation
 
+/// Nodes of the engine's latest disk tree, cached per scan/change so tables can ask for children
+/// synchronously while scrolling. Reset whenever the tree changes.
+final class TreeCache: @unchecked Sendable {
+    static let shared = TreeCache()
+    private let lock = NSLock()
+    private var children: [NodeID: [DiskNode]] = [:]
+    private var nodes: [NodeID: DiskNode] = [:]
+
+    func reset() {
+        lock.withLock {
+            children = [:]
+            nodes = [:]
+        }
+    }
+
+    func children(of id: NodeID) -> [DiskNode] {
+        if let cached = lock.withLock({ children[id] }) { return cached }
+        let list = (try? Engine.call("tree_children", ["id": id], as: [DiskNode].self)) ?? []
+        lock.withLock {
+            children[id] = list
+            for node in list { nodes[node.id] = node }
+        }
+        return list
+    }
+
+    func remember(_ list: [DiskNode]) {
+        lock.withLock { for node in list { nodes[node.id] = node } }
+    }
+
+    func node(_ id: NodeID) -> DiskNode? {
+        if let cached = lock.withLock({ nodes[id] }) { return cached }
+        guard let (node, ancestors) = try? Engine.call("tree_node", ["id": id], as: Pair?.self)?.value else { return nil }
+        remember([node] + ancestors)
+        return node
+    }
+
+    /// Root first, ending with the node's parent.
+    func ancestors(of id: NodeID) -> [DiskNode] {
+        guard let pair = try? Engine.call("tree_node", ["id": id], as: Pair?.self) else { return [] }
+        remember(pair.value.1)
+        return pair.value.1
+    }
+
+    /// The engine replies with a [node, ancestors] pair.
+    private struct Pair: Decodable {
+        let value: (DiskNode, [DiskNode])
+        init(from decoder: Decoder) throws {
+            var c = try decoder.unkeyedContainer()
+            value = (try c.decode(DiskNode.self), try c.decode([DiskNode].self))
+        }
+    }
+}
+
+extension DiskNode {
+    /// For the folder tree table: nil marks a row without a disclosure triangle.
+    var childNodes: [DiskNode]? {
+        isFolder && childCount > 0 ? TreeCache.shared.children(of: id) : nil
+    }
+}
+
+/// WizTree-style disk explorer, backed by the shared engine: the tree, the treemap layout and
+/// removals all happen in the engine; this keeps the UI's selection, zoom and highlight.
 @MainActor
 final class ExplorerModel: ObservableObject {
     enum Target: Hashable {
@@ -30,13 +92,6 @@ final class ExplorerModel: ObservableObject {
     enum Highlight: Equatable {
         case fileExtension(String)
         case fileType(FileType)
-
-        func matches(_ node: DiskNode) -> Bool {
-            switch self {
-            case .fileExtension(let ext): return node.fileExtension == ext && node.fileType != nil
-            case .fileType(let type): return node.fileType == type
-            }
-        }
     }
 
     struct Summary {
@@ -58,15 +113,10 @@ final class ExplorerModel: ObservableObject {
     /// The folder the treemap is zoomed into.
     @Published var focus: DiskNode?
     /// Everything currently selected, across the tree, the file list and the map.
-    @Published private(set) var selectedIDs: Set<Int> = []
+    @Published private(set) var selectedIDs: Set<NodeID> = []
     @Published var highlight: Highlight?
     /// Bumped whenever the tree changes shape so views re-read it.
     @Published private(set) var treeVersion = 0
-
-    nonisolated static let largestFilesLimit = 1_000
-
-    private var nodesByID: [Int: DiskNode] = [:]
-    private var cancelToken: CancelToken?
 
     var isScanning: Bool { progress != nil }
 
@@ -74,38 +124,23 @@ final class ExplorerModel: ObservableObject {
 
     func scan() {
         guard progress == nil else { return }
-        let progress = ScanProgress()
-        let token = CancelToken()
-        let target = target
+        let progress = ScanProgress(kind: "tree")
         self.progress = progress
-        cancelToken = token
-
+        let path = target.path
         Task {
-            let output = await Task.detached(priority: .userInitiated) { () -> (DiskTreeScanner.Output, [Int: DiskNode], [DiskNode]) in
-                let scanner = DiskTreeScanner(progress: progress, cancel: token)
-                let output = scanner.scan(path: target.path, displayName: target.title)
-                if target == .startupDisk { Self.addUnattributedSpace(to: output.root) }
-                let index = Self.index(output.root)
-                let largest = index.values
-                    .filter { if case .file = $0.kind { return true } else { return false } }
-                    .sorted { $0.size > $1.size }
-                    .prefix(Self.largestFilesLimit)
-                return (output, index, Array(largest))
-            }.value
-
+            let overview = try? await Engine.background { try Engine.call("tree_scan", ["path": path], as: TreeOverview?.self) }
             self.progress = nil
-            cancelToken = nil
-            guard !token.isCancelled else { return }
-
-            let (result, index, largest) = output
-            root = result.root
-            nodesByID = index
-            typeStats = result.typeStats
-            largestFiles = largest
-            summary = Summary(files: result.fileCount, folders: result.folderCount, duration: result.duration,
-                              unreadableCount: result.unreadableCount, unreadableExamples: result.unreadableExamples,
-                              otherVolumes: result.otherVolumes)
-            focus = result.root
+            guard let overview = overview ?? nil else { return } // cancelled or failed: keep the previous results
+            TreeCache.shared.reset()
+            TreeCache.shared.remember([overview.root])
+            root = overview.root
+            typeStats = overview.typeStats
+            largestFiles = (try? Engine.call("tree_largest", as: [DiskNode].self)) ?? []
+            TreeCache.shared.remember(largestFiles)
+            let s = overview.summary
+            summary = Summary(files: s.files, folders: s.folders, duration: Double(s.durationMs) / 1000, unreadableCount: s.unreadableCount,
+                              unreadableExamples: s.unreadableExamples, otherVolumes: s.otherVolumes)
+            focus = overview.root
             selectedIDs = []
             highlight = nil
             treeVersion += 1
@@ -113,39 +148,32 @@ final class ExplorerModel: ObservableObject {
     }
 
     func cancelScan() {
-        cancelToken?.cancel()
+        progress?.cancel()
     }
 
-    /// On the startup disk, space the scan couldn't see (sealed system volume internals,
-    /// local snapshots, swap, folders macOS wouldn't open) shows up as one block so the
-    /// map adds up to what the disk reports as used.
-    nonisolated private static func addUnattributedSpace(to root: DiskNode) {
-        let unaccounted = DiskSpace.current().used - root.size
-        guard unaccounted > 0 else { return }
-        let node = DiskNode(name: "System data, snapshots & unreadable folders", kind: .unattributed,
-                            size: unaccounted, parent: root)
-        node.id = -1
-        root.children.append(node)
-        root.children.sort { $0.size > $1.size }
-        root.size += unaccounted
+    // MARK: - Tree access
+
+    func children(of node: DiskNode) -> [DiskNode] {
+        TreeCache.shared.children(of: node.id)
     }
 
-    nonisolated private static func index(_ root: DiskNode) -> [Int: DiskNode] {
-        var index: [Int: DiskNode] = [:]
-        var stack = [root]
-        while let node = stack.popLast() {
-            index[node.id] = node
-            stack.append(contentsOf: node.children)
-        }
-        return index
+    func node(withID id: NodeID?) -> DiskNode? {
+        id.flatMap(TreeCache.shared.node)
+    }
+
+    func parent(of node: DiskNode) -> DiskNode? {
+        self.node(withID: node.parent)
+    }
+
+    func ancestors(of node: DiskNode) -> [DiskNode] {
+        TreeCache.shared.ancestors(of: node.id)
+    }
+
+    func isDescendant(_ node: DiskNode, of other: DiskNode) -> Bool {
+        ancestors(of: node).contains { $0.id == other.id }
     }
 
     // MARK: - Selection & navigation
-
-    func node(withID id: Int?) -> DiskNode? {
-        guard let id, let node = nodesByID[id], node === root || node.parent != nil else { return nil }
-        return node
-    }
 
     var selectedNodes: [DiskNode] {
         selectedIDs.compactMap { node(withID: $0) }.sorted { $0.size > $1.size }
@@ -153,34 +181,33 @@ final class ExplorerModel: ObservableObject {
 
     /// Total size of the selection, counting a folder and something inside it only once.
     var selectedSize: Int64 {
-        let nodes = selectedNodes
-        return nodes.filter { node in !nodes.contains { $0 !== node && node.isDescendant(of: $0) } }
-            .reduce(0) { $0 + $1.size }
+        guard !selectedIDs.isEmpty else { return 0 }
+        return (try? Engine.call("tree_selection_size", ["ids": Array(selectedIDs)], as: Int64.self)) ?? 0
     }
 
     /// Selection from the tree or file list. Picking a single item zooms the map
     /// to its folder so it's visible in context; picking several leaves the map where it is.
-    func selectFromList(_ ids: Set<Int>) {
+    func selectFromList(_ ids: Set<NodeID>) {
         let added = ids.subtracting(selectedIDs)
         selectedIDs = ids
-        if ids.count == 1, let node = node(withID: ids.first), node !== root {
-            focus = node.parent
-        } else if added.count == 1, let node = node(withID: added.first), let parent = node.parent,
-                  let focus, !(parent === focus || parent.isDescendant(of: focus)) {
+        if ids.count == 1, let node = self.node(withID: ids.first), node.id != root?.id {
+            focus = parent(of: node)
+        } else if added.count == 1, let node = self.node(withID: added.first), let parent = parent(of: node),
+                  let focus, !(parent.id == focus.id || isDescendant(parent, of: focus)) {
             self.focus = parent
         }
     }
 
     /// Click on the map: replaces the selection, or with ⌘ held, adds/removes the item.
-    func selectFromMap(_ node: DiskNode?, toggling: Bool) {
-        guard let node else {
+    func selectFromMap(_ id: NodeID?, toggling: Bool) {
+        guard let id else {
             if !toggling { selectedIDs = [] }
             return
         }
         if toggling {
-            if selectedIDs.contains(node.id) { selectedIDs.remove(node.id) } else { selectedIDs.insert(node.id) }
+            if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }
         } else {
-            selectedIDs = [node.id]
+            selectedIDs = [id]
         }
     }
 
@@ -189,40 +216,20 @@ final class ExplorerModel: ObservableObject {
     }
 
     func zoom(into node: DiskNode) {
-        guard node.isFolder, !node.children.isEmpty else { return }
+        guard node.isFolder, node.childCount > 0 else { return }
         focus = node
     }
 
     func zoomOut() {
-        if let parent = focus?.parent { focus = parent }
+        if let focus, let parent = parent(of: focus) { self.focus = parent }
     }
 
     // MARK: - Actions
 
-    /// Only things inside the home folder or /Applications can be trashed from here,
-    /// never the standard top-level folders themselves, and never pieces of an app or
-    /// a media library (removing a file from inside one breaks it; trash the whole thing instead).
+    /// The engine decides what's removable: inside the home folder or a whole app in
+    /// /Applications, never the standard folders and never pieces of an app or media library.
     func canTrash(_ node: DiskNode) -> Bool {
-        guard node.isOnDisk, node !== root, protectingPackage(of: node) == nil else { return false }
-        let path = node.path
-        let home = DiskUtils.home.path
-        let protected = Set([home, "/Applications"] +
-            ["Library", "Desktop", "Documents", "Downloads", "Pictures", "Movies", "Music", "Applications", "Public"]
-                .map { home + "/" + $0 })
-        guard !protected.contains(path) else { return false }
-        return path.hasPrefix(home + "/") || path.hasPrefix("/Applications/")
-    }
-
-    /// Bundles whose insides must only be changed by their own app: apps, and libraries
-    /// such as Photos, whose database files (e.g. Photos.sqlite-wal) look like junk but aren't.
-    private static let protectedPackageExtensions: Set<String> = [
-        "app", "photoslibrary", "photolibrary", "migratedphotolibrary", "aplibrary", "musiclibrary",
-        "tvlibrary", "imovielibrary", "fcpbundle", "logicx", "band", "theater",
-    ]
-
-    /// The app or library this item is part of, if any.
-    func protectingPackage(of node: DiskNode) -> DiskNode? {
-        node.ancestors.last { Self.protectedPackageExtensions.contains(($0.name as NSString).pathExtension.lowercased()) }
+        node.canTrash
     }
 
     struct TrashResult {
@@ -235,53 +242,39 @@ final class ExplorerModel: ObservableObject {
     /// inside a folder that's also being trashed.
     func trashPlan(for nodes: [DiskNode]) -> [DiskNode] {
         let removable = nodes.filter(canTrash)
-        return removable.filter { node in !removable.contains { $0 !== node && node.isDescendant(of: $0) } }
+        let ids = Set(removable.map(\.id))
+        return removable.filter { node in !ancestors(of: node).contains { ids.contains($0.id) } }
     }
 
-    /// Moves the items to the Trash and takes them out of the tree.
+    /// Moves the items to the Trash (in the engine) and refreshes the tree.
     func moveToTrash(_ nodes: [DiskNode]) -> TrashResult {
         var result = TrashResult()
-        // Decide refusals up front: once an item is detached its path can't be rebuilt.
-        for node in nodes where node.isOnDisk && !canTrash(node) {
-            let reason: String
-            if let package = protectingPackage(of: node) {
-                reason = package.name.hasSuffix(".app")
-                    ? "It's part of \(package.name), and removing it would break the app. Trash the whole app instead."
-                    : "It's part of \(package.name), and removing it could damage the library. Manage it from its app instead."
-            } else {
-                reason = "It's outside your home folder and Applications, so Floorspace won't remove it."
-            }
-            result.failures.append((node.name, reason))
+        for node in nodes where node.isOnDisk && !node.canTrash {
+            result.failures.append((node.name, "It's part of an app or library (like Photos), or outside your home folder and Applications, so Floorspace won't remove it."))
         }
-        for node in trashPlan(for: nodes) {
-            guard let url = node.url else { continue }
-            do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            } catch {
-                result.failures.append((node.name, error.localizedDescription))
-                continue
-            }
-            result.movedCount += 1
-            result.movedBytes += node.size
-            detach(node)
+        let plan = trashPlan(for: nodes)
+        guard !plan.isEmpty else { return result }
+        guard let engine = try? Engine.call("tree_trash", ["ids": plan.map(\.id)], as: TreeTrashResult.self) else {
+            result.failures.append(("Floorspace", "The engine couldn't move these to the Trash."))
+            return result
         }
-        if result.movedCount > 0 { treeVersion += 1 }
+        result.movedCount = engine.moved.count
+        result.movedBytes = engine.movedBytes
+        result.failures += engine.failures.map { (Format.tildePath($0.target), $0.message ?? "") }
+        if !engine.moved.isEmpty { refreshAfterRemoval(moved: Set(engine.moved)) }
         return result
     }
 
-    private func detach(_ node: DiskNode) {
-        if node.fileType != nil, let index = typeStats.firstIndex(where: { $0.ext == node.fileExtension }) {
-            typeStats[index].size -= node.size
-            typeStats[index].count -= 1
-        }
-        if let focus, focus === node || focus.isDescendant(of: node) {
-            self.focus = node.parent
-        }
-        selectedIDs.remove(node.id)
-        largestFiles.removeAll { $0 === node || $0.isDescendant(of: node) }
-        let parent = node.parent
-        node.removeFromTree()
-        parent?.children.sort { $0.size > $1.size }
+    private func refreshAfterRemoval(moved: Set<NodeID>) {
+        let focusWasRemoved = focus.map { f in moved.contains(f.id) || ancestors(of: f).contains { moved.contains($0.id) } } ?? false
+        TreeCache.shared.reset()
+        root = node(withID: 0)
+        focus = focusWasRemoved ? root : focus.flatMap { node(withID: $0.id) } ?? root
+        largestFiles = (try? Engine.call("tree_largest", as: [DiskNode].self)) ?? []
+        TreeCache.shared.remember(largestFiles)
+        typeStats = (try? Engine.call("tree_types", as: [TypeStat].self)) ?? typeStats
+        selectedIDs.subtract(moved)
+        treeVersion += 1
     }
 
     func revealInFinder(_ nodes: [DiskNode]) {
@@ -290,12 +283,11 @@ final class ExplorerModel: ObservableObject {
     }
 
     func revealInFinder(_ node: DiskNode) {
-        guard let url = node.url else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        revealInFinder([node])
     }
 
     func copyPaths(_ nodes: [DiskNode]) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(nodes.filter(\.isOnDisk).map(\.path).joined(separator: "\n"), forType: .string)
+        NSPasteboard.general.setString(nodes.compactMap(\.path).joined(separator: "\n"), forType: .string)
     }
 }

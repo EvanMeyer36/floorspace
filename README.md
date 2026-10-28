@@ -97,32 +97,35 @@ one never takes the game's save files.
 
 ## Install
 
-### Mac app (recommended on a Mac)
+### Download
 
-1. Download **`Floorspace-x.y.z.dmg`** from [Releases](https://github.com/EvanMeyer36/floorspace/releases/latest). It's
-   universal (Apple Silicon and Intel) and needs macOS 14 or later.
-2. Open it and drag **Floorspace** into **Applications**.
-3. **The first time you open it**, macOS says it can't verify the app, because it isn't notarized (that needs a paid Apple
-   Developer account). Click **Done**, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
+Get the latest from [Releases](https://github.com/EvanMeyer36/floorspace/releases/latest). Every platform has an installer
+and a portable version that runs without installing:
 
-   ```bash
-   xattr -dr com.apple.quarantine "/Applications/Floorspace.app"
-   ```
+| | Installer | Portable |
+| --- | --- | --- |
+| **macOS 14+** (Apple Silicon & Intel) | `Floorspace-x.y.z-macOS.dmg`: drag Floorspace into Applications | `Floorspace-x.y.z-macOS.zip`: unzip and run from anywhere |
+| **Windows 10/11** (x64) | `…-windows-setup.exe` or `…-windows.msi` | `…-windows-portable.zip`: unzip and run `Floorspace.exe` |
+| **Linux** (x86_64) | `…-linux-amd64.deb` (Debian/Ubuntu), `…-linux-x86_64.rpm` (Fedora/openSUSE) | `…-linux-x86_64-portable.AppImage`: `chmod +x` and run |
 
-### Desktop app for Windows and Linux
+On a Mac you get the native Mac app; on Windows and Linux, the desktop app.
 
-Installers are built by CI on every change. Until they're attached to a release, get them from the latest successful
-[CI run](https://github.com/EvanMeyer36/floorspace/actions/workflows/ci.yml) under **Artifacts**:
+**First launch.** The downloads aren't code-signed yet (that needs paid Apple and Microsoft developer accounts), so the
+system warns once:
 
-- **Windows:** the `.msi` or setup `.exe`. Windows SmartScreen will warn that the app is unrecognized, because it isn't
-  code-signed. Choose **More info → Run anyway**.
-- **Linux:** the `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) or `.AppImage` (any distro: `chmod +x` and run it).
+- **macOS:** click **Done**, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Floorspace.app"
+  ```
+
+- **Windows:** SmartScreen says the app is unrecognized. Choose **More info → Run anyway**.
 
 ### Build from source
 
 | What | Needs | Command |
 | --- | --- | --- |
-| Mac app | macOS 14+, Xcode Command Line Tools | `cd macos && ./scripts/build-app.sh --install` |
+| Mac app | macOS 14+, Xcode Command Line Tools, [Rust](https://rustup.rs) | `cd macos && ./scripts/build-app.sh --install` |
 | Desktop app | [Rust](https://rustup.rs), Node.js 20+, and on Linux `libwebkit2gtk-4.1-dev librsvg2-dev` | `cd desktop && npm ci && npx tauri build` |
 | CLI | Rust | `cargo build --release -p floorspace-cli` → `target/release/floorspace` |
 
@@ -188,8 +191,11 @@ engine:
 | `remove` | The single place anything is removed, with the shared protection rules |
 | `apps` | Installed apps and uninstall per OS (`apps/macos.rs`, `apps/windows.rs`, `apps/linux.rs`) |
 
-The native Mac app (`macos/`) still has its own Swift engine, with the macOS-specific fast scanner (`getattrlistbulk`) and
-APFS clone detection. Moving it onto the shared engine is the next step.
+Both apps run this engine:
+
+- **The desktop app** calls it from its Tauri backend (`desktop/src-tauri`).
+- **The native Mac app** links it as a static library through a small C interface (`ffi/`): JSON in, JSON out. The SwiftUI
+  screens are Mac-only; scanning, cleanup rules, safety checks and uninstalling are the same code on every OS.
 
 ### Project layout
 
@@ -197,9 +203,10 @@ APFS clone detection. Moving it onto the shared engine is the next step.
 | --- | --- |
 | `core/` | Shared Rust engine, with unit and integration tests |
 | `cli/` | The `floorspace` command-line tool |
+| `ffi/` | C interface to the engine, used by the native Mac app |
 | `desktop/` | Tauri desktop app: `src/` (React UI) and `src-tauri/` (Rust backend) |
 | `macos/` | Native SwiftUI Mac app, its bundle resources and build/release scripts |
-| `.github/workflows/ci.yml` | Tests and builds on Linux, Windows and macOS for every push |
+| `.github/workflows/` | `ci.yml` tests and builds on Linux, Windows and macOS for every push; `release.yml` builds and publishes a release when a `v*` tag is pushed |
 
 ### Development
 
@@ -221,7 +228,6 @@ APFS clone detection. Moving it onto the shared engine is the next step.
   real Windows, Linux and macOS machines, but nobody has clicked through the desktop app on Windows or Linux yet.
 - **Uninstalling on Windows and Linux** (vendor uninstallers, package managers) hasn't been exercised end to end.
 - **The desktop app shows letter badges instead of real app icons**, since icon formats differ by OS.
-- **Duplicate detection doesn't recognize APFS clones yet.** The Mac app does.
 - **Leftover detection covers per-user folders only**, not system-wide ones some installers add.
 - **The Intel Mac and Windows-on-ARM builds** haven't been run on real hardware.
 

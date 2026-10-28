@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds a universal "Floorspace.app" and packages it for a GitHub release:
-#   dist/Floorspace-<version>.dmg  (drag-to-Applications disk image)
-#   dist/Floorspace-<version>.zip
+#   dist/Floorspace-<version>-macOS.dmg  (installer: drag to Applications)
+#   dist/Floorspace-<version>-macOS.zip  (portable: the app itself, runs from anywhere)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,12 +16,12 @@ rm -rf "$DIST"
 mkdir -p "$DIST"
 
 # ditto keeps the code signature and extended attributes intact.
-ditto -c -k --keepParent "$APP" "$DIST/Floorspace-$VERSION.zip"
+ditto -c -k --keepParent "$APP" "$DIST/Floorspace-$VERSION-macOS.zip"
 
 STAGING=$(mktemp -d)
 ditto "$APP" "$STAGING/Floorspace.app"
 ln -s /Applications "$STAGING/Applications"
-hdiutil create -volname "Floorspace $VERSION" -srcfolder "$STAGING" -ov -format UDZO -quiet "$DIST/Floorspace-$VERSION.dmg"
+hdiutil create -volname "Floorspace $VERSION" -srcfolder "$STAGING" -ov -format UDZO -quiet "$DIST/Floorspace-$VERSION-macOS.dmg"
 rm -rf "$STAGING"
 
 (cd "$DIST" && shasum -a 256 Floorspace-* > SHA256SUMS.txt)

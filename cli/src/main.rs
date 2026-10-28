@@ -116,7 +116,7 @@ fn list_apps(json: bool) -> ExitCode {
     }
     println!("{} apps", list.len());
     for app in &list {
-        let flags = [app.protection.as_ref().map(|_| "protected"), app.needs_admin().then_some("needs password")].into_iter().flatten().collect::<Vec<_>>().join(", ");
+        let flags = [app.protection.as_ref().map(|_| "protected"), app.needs_password.then_some("needs password")].into_iter().flatten().collect::<Vec<_>>().join(", ");
         println!(
             "  {:>10} (+{:>9} data)  {}{}{}",
             bytes(app.size),
