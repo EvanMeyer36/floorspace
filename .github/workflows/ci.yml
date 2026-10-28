@@ -20,23 +20,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Tests
-        run: cargo test -p cleaner-core -p cleaner-cli
+        run: cargo test -p floorspace-core -p floorspace-cli
         env:
           # Safe on throwaway CI machines: really moves test files to the trash and lists real apps.
-          CLEANER_TEST_TRASH: "1"
-          CLEANER_TEST_APPS: "1"
+          FLOORSPACE_TEST_TRASH: "1"
+          FLOORSPACE_TEST_APPS: "1"
 
       - name: Build CLI
-        run: cargo build --release -p cleaner-cli
+        run: cargo build --release -p floorspace-cli
 
       - name: Smoke test - disk scan
-        run: cargo run --release -q -p cleaner-cli -- scan .
+        run: cargo run --release -q -p floorspace-cli -- scan .
 
       - name: Smoke test - cleanup categories
-        run: cargo run --release -q -p cleaner-cli -- junk --search .
+        run: cargo run --release -q -p floorspace-cli -- junk --search .
 
       - name: Smoke test - installed apps
-        run: cargo run --release -q -p cleaner-cli -- apps
+        run: cargo run --release -q -p floorspace-cli -- apps
 
   macos-app:
     name: macOS app (SwiftUI)
@@ -80,7 +80,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: mac-cleaner-desktop-${{ runner.os }}
+          name: mac-floorspace-desktop-${{ runner.os }}
           if-no-files-found: error
           path: |
             target/release/bundle/msi/*.msi

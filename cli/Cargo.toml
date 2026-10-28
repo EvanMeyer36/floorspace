@@ -1,13 +1,13 @@
 [package]
-name = "cleaner-cli"
+name = "floorspace-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "cleaner"
+name = "floorspace"
 path = "src/main.rs"
 
 [dependencies]
-cleaner-core.workspace = true
+floorspace-core.workspace = true
 serde_json.workspace = true

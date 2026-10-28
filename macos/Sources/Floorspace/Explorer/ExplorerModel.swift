@@ -249,7 +249,7 @@ final class ExplorerModel: ObservableObject {
                     ? "It's part of \(package.name), and removing it would break the app. Trash the whole app instead."
                     : "It's part of \(package.name), and removing it could damage the library. Manage it from its app instead."
             } else {
-                reason = "It's outside your home folder and Applications, so Mac Cleaner won't remove it."
+                reason = "It's outside your home folder and Applications, so Floorspace won't remove it."
             }
             result.failures.append((node.name, reason))
         }

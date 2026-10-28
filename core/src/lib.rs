@@ -1,4 +1,4 @@
-//! Cross-platform engine behind Mac Cleaner (macOS, Windows, Linux).
+//! Cross-platform engine behind Floorspace (macOS, Windows, Linux).
 //!
 //! - [`tree`]: WizTree-style scan of a disk or folder into a size-sorted tree
 //! - [`treemap`]: squarified treemap layout of that tree

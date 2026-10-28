@@ -1,11 +1,11 @@
 //! End-to-end checks of the engine against folders with known contents.
 
-use cleaner_core::cleanup::{Category, Settings};
-use cleaner_core::fsutil;
-use cleaner_core::progress::Progress;
-use cleaner_core::search;
-use cleaner_core::tree::{self, DiskTree, NodeKind};
-use cleaner_core::treemap::{self, CellKind, HitIndex};
+use floorspace_core::cleanup::{Category, Settings};
+use floorspace_core::fsutil;
+use floorspace_core::progress::Progress;
+use floorspace_core::search;
+use floorspace_core::tree::{self, DiskTree, NodeKind};
+use floorspace_core::treemap::{self, CellKind, HitIndex};
 use std::fs;
 use std::path::Path;
 
@@ -62,8 +62,8 @@ fn disk_tree_matches_the_filesystem() {
     let first = tree.largest_files[0];
     assert_eq!(tree.node(first).unwrap().name, "big.mov");
     assert_eq!(tree.path(first).unwrap(), dir.path().join("videos/big.mov"));
-    assert_eq!(tree.node(first).unwrap().file_type, Some(cleaner_core::FileType::Video));
-    assert_eq!(tree.node(find(&tree, "videos")).unwrap().file_type, Some(cleaner_core::FileType::Video), "folder takes its main type");
+    assert_eq!(tree.node(first).unwrap().file_type, Some(floorspace_core::FileType::Video));
+    assert_eq!(tree.node(find(&tree, "videos")).unwrap().file_type, Some(floorspace_core::FileType::Video), "folder takes its main type");
 }
 
 #[cfg(unix)]
@@ -150,14 +150,14 @@ fn cancelling_stops_a_scan() {
 /// Moves real files to the real trash, so it only runs where that's harmless (CI sets this).
 #[test]
 fn moves_files_to_the_trash() {
-    if std::env::var("CLEANER_TEST_TRASH").is_err() {
-        eprintln!("skipped: set CLEANER_TEST_TRASH=1 to run");
+    if std::env::var("FLOORSPACE_TEST_TRASH").is_err() {
+        eprintln!("skipped: set FLOORSPACE_TEST_TRASH=1 to run");
         return;
     }
-    let dir = tempfile::Builder::new().prefix("cleaner-trash-test").tempdir_in(fsutil::home()).unwrap();
+    let dir = tempfile::Builder::new().prefix("floorspace-trash-test").tempdir_in(fsutil::home()).unwrap();
     write(&dir.path().join("junk/a.bin"), 10_000, 1);
     write(&dir.path().join("junk/b.bin"), 10_000, 2);
-    let outcomes = cleaner_core::remove::move_to_trash(&[dir.path().join("junk"), dir.path().join("junk/a.bin")]);
+    let outcomes = floorspace_core::remove::move_to_trash(&[dir.path().join("junk"), dir.path().join("junk/a.bin")]);
     assert_eq!(outcomes.len(), 1, "nested path should be folded into its folder");
     assert!(outcomes[0].ok, "{:?}", outcomes[0].message);
     assert!(!dir.path().join("junk").exists());

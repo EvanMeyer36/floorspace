@@ -1,17 +1,17 @@
-//! Tauri backend: exposes the shared engine (`cleaner-core`) to the web UI.
+//! Tauri backend: exposes the shared engine (`floorspace-core`) to the web UI.
 //!
 //! The UI never hands the backend a path to delete or a command to run. It refers to things by
 //! ID from the latest scan (a tree node, a cleanup item, an app), and the backend looks them up
 //! in its own results. A compromised web view can't make it remove arbitrary files.
 
-use cleaner_core::apps::{self, InstalledApp, ListOptions, UninstallReport};
-use cleaner_core::cleanup::{self, Category, CategoryResult, Settings};
-use cleaner_core::fsutil::{self, DiskSpace};
-use cleaner_core::progress::{Progress, Snapshot};
-use cleaner_core::remove::{self, Action, Outcome};
-use cleaner_core::tree::{self, DiskTree, NodeId, NodeKind, Summary, TypeStat};
-use cleaner_core::treemap::{self, Cell};
-use cleaner_core::FileType;
+use floorspace_core::apps::{self, InstalledApp, ListOptions, UninstallReport};
+use floorspace_core::cleanup::{self, Category, CategoryResult, Settings};
+use floorspace_core::fsutil::{self, DiskSpace};
+use floorspace_core::progress::{Progress, Snapshot};
+use floorspace_core::remove::{self, Action, Outcome};
+use floorspace_core::tree::{self, DiskTree, NodeId, NodeKind, Summary, TypeStat};
+use floorspace_core::treemap::{self, Cell};
+use floorspace_core::FileType;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -349,5 +349,5 @@ pub fn run() {
             apps_uninstall,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Mac Cleaner");
+        .expect("error while running Floorspace");
 }

@@ -1,15 +1,15 @@
 //! Writes a JSON snapshot of real engine output for previewing the desktop UI in a browser
 //! without the Tauri backend (see desktop/src/dev/mock.ts). Read-only: nothing is changed.
 //!
-//!   cargo run -p cleaner-core --example ui_fixture -- <folder-to-scan> <search-folder> <out.json>
+//!   cargo run -p floorspace-core --example ui_fixture -- <folder-to-scan> <search-folder> <out.json>
 //!
 //! Avoids places macOS guards with permission prompts (Downloads, other apps' data).
 
-use cleaner_core::cleanup::{self, Category, Settings};
-use cleaner_core::fsutil;
-use cleaner_core::progress::Progress;
-use cleaner_core::tree::{self, DiskTree};
-use cleaner_core::{apps, treemap};
+use floorspace_core::cleanup::{self, Category, Settings};
+use floorspace_core::fsutil;
+use floorspace_core::progress::Progress;
+use floorspace_core::tree::{self, DiskTree};
+use floorspace_core::{apps, treemap};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -19,7 +19,7 @@ fn node(tree: &DiskTree, id: u32) -> Value {
     json!({
         "id": id, "name": n.name, "kind": n.kind, "size": n.size, "files": n.files, "fileType": n.file_type,
         "childCount": n.children.len(), "unreadable": n.unreadable, "parent": n.parent,
-        "canTrash": id != 0 && path.as_deref().is_some_and(|p| cleaner_core::remove::protection_reason(p).is_none()),
+        "canTrash": id != 0 && path.as_deref().is_some_and(|p| floorspace_core::remove::protection_reason(p).is_none()),
         "path": path,
     })
 }
@@ -54,7 +54,7 @@ fn main() {
         .into_iter()
         .map(|c| serde_json::to_value(cleanup::scan(c, &settings, &progress)).unwrap())
         .collect();
-    let found = cleaner_core::search::scan(&search_root, &cleaner_core::search::Options::from(&settings), &progress);
+    let found = floorspace_core::search::scan(&search_root, &floorspace_core::search::Options::from(&settings), &progress);
     junk.push(serde_json::to_value(found.large_files).unwrap());
     junk.push(serde_json::to_value(found.duplicates).unwrap());
 

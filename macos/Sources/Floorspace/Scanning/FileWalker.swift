@@ -54,7 +54,7 @@ enum FileWalker {
         let examples = denied.prefix(3).map(Format.tildePath).joined(separator: ", ")
         let more = denied.count > 3 ? " and \(denied.count - 3) more" : ""
         return ScanWarning(
-            message: "macOS didn't let Mac Cleaner look inside \(examples)\(more), so those weren't searched.",
+            message: "macOS didn't let Floorspace look inside \(examples)\(more), so those weren't searched.",
             settingsPane: .filesAndFolders
         )
     }

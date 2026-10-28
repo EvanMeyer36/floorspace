@@ -6,7 +6,7 @@ import type { Cell } from "../api";
 export async function installMock() {
   // glob instead of import: a missing fixture (e.g. in CI) must not break the build.
   const load = import.meta.glob("./fixture.json")["./fixture.json"];
-  if (!load) throw new Error("No UI fixture. Run: cargo run -p cleaner-core --example ui_fixture -- <scan> <search> desktop/src/dev/fixture.json");
+  if (!load) throw new Error("No UI fixture. Run: cargo run -p floorspace-core --example ui_fixture -- <scan> <search> desktop/src/dev/fixture.json");
   const fixture = ((await load()) as any).default;
   mockWindows("main");
   let junk = fixture.junk;

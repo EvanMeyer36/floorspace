@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Mac Cleaner",
-  "version": "1.2.0",
-  "identifier": "local.maccleaner.desktop",
+  "productName": "Floorspace",
+  "version": "2.0.0",
+  "identifier": "io.github.evanmeyer36.floorspace.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Mac Cleaner",
+        "title": "Floorspace",
         "width": 1180,
         "height": 780,
         "minWidth": 900,

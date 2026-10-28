@@ -2,14 +2,14 @@ import AppKit
 import SwiftUI
 
 @main
-struct MacCleanerApp: App {
+struct FloorspaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
     @StateObject private var explorer = ExplorerModel()
     @StateObject private var apps = AppsModel()
 
     var body: some Scene {
-        Window("Mac Cleaner", id: "main") {
+        Window("Floorspace", id: "main") {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(explorer)

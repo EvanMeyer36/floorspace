@@ -110,8 +110,8 @@ fn protection(path: &Path, bundle_id: Option<&str>) -> Option<String> {
         return Some("Part of macOS, which protects it from being removed.".into());
     }
     let this_app = std::env::current_exe().ok().is_some_and(|exe| exe.starts_with(path));
-    if this_app || bundle_id == Some("local.maccleaner.MacCleaner") {
-        return Some("This is Mac Cleaner itself.".into());
+    if this_app || bundle_id == Some("io.github.evanmeyer36.floorspace") {
+        return Some("This is Floorspace itself.".into());
     }
     None
 }
@@ -254,7 +254,7 @@ mod tests {
     /// Reads the real /Applications and ~/Library, so it only runs where that's harmless (CI sets this).
     #[test]
     fn lists_real_apps() {
-        if std::env::var("CLEANER_TEST_APPS").is_err() {
+        if std::env::var("FLOORSPACE_TEST_APPS").is_err() {
             return;
         }
         let apps = list(&Progress::new(), false);

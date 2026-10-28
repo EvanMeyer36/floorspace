@@ -486,44 +486,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cleaner-cli"
-version = "1.2.0"
-dependencies = [
- "cleaner-core",
- "serde_json",
-]
-
-[[package]]
-name = "cleaner-core"
-version = "1.2.0"
-dependencies = [
- "blake3",
- "dirs",
- "libc",
- "plist",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "trash",
- "windows-sys 0.61.2",
- "winreg",
-]
-
-[[package]]
-name = "cleaner-desktop"
-version = "1.2.0"
-dependencies = [
- "cleaner-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1072,6 +1034,44 @@ dependencies = [
  "crc32fast",
  "miniz_oxide 0.9.1",
  "zlib-rs",
+]
+
+[[package]]
+name = "floorspace-cli"
+version = "2.0.0"
+dependencies = [
+ "floorspace-core",
+ "serde_json",
+]
+
+[[package]]
+name = "floorspace-core"
+version = "2.0.0"
+dependencies = [
+ "blake3",
+ "dirs",
+ "libc",
+ "plist",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "trash",
+ "windows-sys 0.61.2",
+ "winreg",
+]
+
+[[package]]
+name = "floorspace-desktop"
+version = "2.0.0"
+dependencies = [
+ "floorspace-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
 ]
 
 [[package]]

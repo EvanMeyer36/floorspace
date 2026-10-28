@@ -112,7 +112,7 @@ struct ExplorerView: View {
                     } label: {
                         Label("\(Format.count(summary.unreadableCount)) folders locked", systemImage: "lock")
                     }
-                    .help("macOS didn't let Mac Cleaner read these folders, so their space shows up as \u{201C}System data\u{201D}. Click to grant Full Disk Access, then scan again.\n\n" + summary.unreadableExamples.prefix(8).joined(separator: "\n"))
+                    .help("macOS didn't let Floorspace read these folders, so their space shows up as \u{201C}System data\u{201D}. Click to grant Full Disk Access, then scan again.\n\n" + summary.unreadableExamples.prefix(8).joined(separator: "\n"))
                 }
             }
         }

@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacCleaner",
+    name: "Floorspace",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "MacCleaner",
-            path: "Sources/MacCleaner"
+            name: "Floorspace",
+            path: "Sources/Floorspace"
         )
     ]
 )

@@ -1,6 +1,6 @@
 [package]
-name = "cleaner-core"
-description = "Cross-platform engine for Mac Cleaner: disk scanning, cleanup rules, duplicates, safe removal and app uninstall"
+name = "floorspace-core"
+description = "Cross-platform engine for Floorspace: disk scanning, cleanup rules, duplicates, safe removal and app uninstall"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

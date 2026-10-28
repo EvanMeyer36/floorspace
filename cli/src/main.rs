@@ -1,16 +1,16 @@
-//! `cleaner`: the Mac Cleaner engine from the command line (macOS, Windows, Linux).
+//! `floorspace`: the Floorspace engine from the command line (macOS, Windows, Linux).
 //!
-//!   cleaner scan [PATH] [--json]       folder sizes, largest files and file types (WizTree-style)
-//!   cleaner junk [--search PATH] [--json]  what the cleanup categories would offer to remove
-//!   cleaner apps [--json]              installed apps with sizes and leftovers
-//!   cleaner trash PATH... --yes        move things to the OS trash (same safety rules as the app)
+//!   floorspace scan [PATH] [--json]       folder sizes, largest files and file types (WizTree-style)
+//!   floorspace junk [--search PATH] [--json]  what the cleanup categories would offer to remove
+//!   floorspace apps [--json]              installed apps with sizes and leftovers
+//!   floorspace trash PATH... --yes        move things to the OS trash (same safety rules as the app)
 //!
 //! Scanning never changes anything; only `trash` with `--yes` does.
 
-use cleaner_core::cleanup::{self, Settings};
-use cleaner_core::progress::Progress;
-use cleaner_core::tree::{self, DiskTree};
-use cleaner_core::{apps, fsutil, remove};
+use floorspace_core::cleanup::{self, Settings};
+use floorspace_core::progress::Progress;
+use floorspace_core::tree::{self, DiskTree};
+use floorspace_core::{apps, fsutil, remove};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -24,7 +24,7 @@ fn main() -> ExitCode {
         Some("apps") => list_apps(json),
         Some("trash") => trash(positional.iter().map(PathBuf::from).collect(), args.iter().any(|a| a == "--yes")),
         _ => {
-            eprintln!("usage: cleaner scan [PATH] | junk [--search PATH] | apps | trash PATH... --yes   [--json]");
+            eprintln!("usage: floorspace scan [PATH] | junk [--search PATH] | apps | trash PATH... --yes   [--json]");
             ExitCode::from(2)
         }
     }

@@ -1,4 +1,4 @@
-# Mac Cleaner
+# Floorspace
 
 **See what's filling your disk, and clear it safely. On macOS, Windows and Linux.**
 
@@ -14,7 +14,7 @@ It comes in two forms, both running on the same Rust engine:
 | **Mac app** | macOS 14+ | A native SwiftUI app. The most polished experience on a Mac. |
 | **Desktop app** | Windows 10/11, Linux, macOS | A [Tauri](https://tauri.app) app (Rust + web UI) with the same features. |
 
-There's also a small `cleaner` command-line tool for scripting.
+There's also a small `floorspace` command-line tool for scripting.
 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)
@@ -99,20 +99,20 @@ one never takes the game's save files.
 
 ### Mac app (recommended on a Mac)
 
-1. Download **`MacCleaner-x.y.z.dmg`** from [Releases](https://github.com/EvanMeyer36/mac-cleaner/releases/latest). It's
+1. Download **`Floorspace-x.y.z.dmg`** from [Releases](https://github.com/EvanMeyer36/floorspace/releases/latest). It's
    universal (Apple Silicon and Intel) and needs macOS 14 or later.
-2. Open it and drag **Mac Cleaner** into **Applications**.
+2. Open it and drag **Floorspace** into **Applications**.
 3. **The first time you open it**, macOS says it can't verify the app, because it isn't notarized (that needs a paid Apple
    Developer account). Click **Done**, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
 
    ```bash
-   xattr -dr com.apple.quarantine "/Applications/Mac Cleaner.app"
+   xattr -dr com.apple.quarantine "/Applications/Floorspace.app"
    ```
 
 ### Desktop app for Windows and Linux
 
 Installers are built by CI on every change. Until they're attached to a release, get them from the latest successful
-[CI run](https://github.com/EvanMeyer36/mac-cleaner/actions/workflows/ci.yml) under **Artifacts**:
+[CI run](https://github.com/EvanMeyer36/floorspace/actions/workflows/ci.yml) under **Artifacts**:
 
 - **Windows:** the `.msi` or setup `.exe`. Windows SmartScreen will warn that the app is unrecognized, because it isn't
   code-signed. Choose **More info → Run anyway**.
@@ -124,15 +124,15 @@ Installers are built by CI on every change. Until they're attached to a release,
 | --- | --- | --- |
 | Mac app | macOS 14+, Xcode Command Line Tools | `cd macos && ./scripts/build-app.sh --install` |
 | Desktop app | [Rust](https://rustup.rs), Node.js 20+, and on Linux `libwebkit2gtk-4.1-dev librsvg2-dev` | `cd desktop && npm ci && npx tauri build` |
-| CLI | Rust | `cargo build --release -p cleaner-cli` → `target/release/cleaner` |
+| CLI | Rust | `cargo build --release -p floorspace-cli` → `target/release/floorspace` |
 
 The CLI's commands:
 
 ```bash
-cleaner scan [PATH]          # folder sizes, largest files, file types
-cleaner junk [--search PATH] # what each cleanup category would offer
-cleaner apps                 # installed apps with sizes and leftovers
-cleaner trash PATH... --yes  # move things to the trash (same safety rules)
+floorspace scan [PATH]          # folder sizes, largest files, file types
+floorspace junk [--search PATH] # what each cleanup category would offer
+floorspace apps                 # installed apps with sizes and leftovers
+floorspace trash PATH... --yes  # move things to the trash (same safety rules)
 ```
 
 Add `--json` to any of them for machine-readable output.
@@ -196,7 +196,7 @@ APFS clone detection. Moving it onto the shared engine is the next step.
 | Path | What's there |
 | --- | --- |
 | `core/` | Shared Rust engine, with unit and integration tests |
-| `cli/` | The `cleaner` command-line tool |
+| `cli/` | The `floorspace` command-line tool |
 | `desktop/` | Tauri desktop app: `src/` (React UI) and `src-tauri/` (Rust backend) |
 | `macos/` | Native SwiftUI Mac app, its bundle resources and build/release scripts |
 | `.github/workflows/ci.yml` | Tests and builds on Linux, Windows and macOS for every push |
@@ -204,12 +204,12 @@ APFS clone detection. Moving it onto the shared engine is the next step.
 ### Development
 
 - `cargo test --workspace`: engine tests.
-- On CI, `CLEANER_TEST_TRASH=1` and `CLEANER_TEST_APPS=1` also run the tests that touch the real trash and app list.
+- On CI, `FLOORSPACE_TEST_TRASH=1` and `FLOORSPACE_TEST_APPS=1` also run the tests that touch the real trash and app list.
 - `npm --prefix desktop run dev` previews the desktop UI in a browser using a stand-in backend fed with real engine output.
   Create its data first:
 
   ```bash
-  cargo run -p cleaner-core --example ui_fixture -- <scan-folder> <search-folder> desktop/src/dev/fixture.json
+  cargo run -p floorspace-core --example ui_fixture -- <scan-folder> <search-folder> desktop/src/dev/fixture.json
   ```
 
 ---
@@ -231,7 +231,7 @@ APFS clone detection. Moving it onto the shared engine is the next step.
 
 ### How this was made
 
-Mac Cleaner was **vibe coded**. All of the code was written by **Claude Opus 5.5**, Anthropic's AI model, working in
+Floorspace was **vibe coded**. All of the code was written by **Claude Opus 5.5**, Anthropic's AI model, working in
 [Claude Code](https://claude.com/claude-code). That covers the Swift Mac app, the Rust engine, the Tauri desktop app and the CI.
 
 The human side of the project:
@@ -277,7 +277,7 @@ Testing caught real problems before release, which is why you should read the co
 - **Look at what's selected** before you confirm. Pre-selected means "rebuilt automatically", not "reviewed by a human".
 - **Check the Trash or Recycle Bin before emptying it.**
 
-The software is provided "as is", without warranty of any kind (see the [MIT license](LICENSE)). Mac Cleaner isn't affiliated
+The software is provided "as is", without warranty of any kind (see the [MIT license](LICENSE)). Floorspace isn't affiliated
 with Apple, Microsoft, Anthropic, or WizTree.
 
 Bug reports, reviews and pull requests are very welcome. A second pair of human eyes on the deletion code, and anyone trying

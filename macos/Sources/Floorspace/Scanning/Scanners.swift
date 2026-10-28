@@ -108,7 +108,7 @@ enum Scanners {
         progress.setPhase("Looking for iPhone & iPad backups")
         let backups = DiskUtils.contents(of: lib.appendingPathComponent("Application Support/MobileSync/Backup"))
         if backups.denied {
-            warnings.append(ScanWarning(message: "iPhone/iPad backups are protected. Give Mac Cleaner Full Disk Access to check them.", settingsPane: .fullDiskAccess))
+            warnings.append(ScanWarning(message: "iPhone/iPad backups are protected. Give Floorspace Full Disk Access to check them.", settingsPane: .fullDiskAccess))
         }
         for url in backups.urls {
             if Task.isCancelled { break }
@@ -193,7 +193,7 @@ enum Scanners {
         let (urls, denied) = DiskUtils.contents(of: DiskUtils.home.appendingPathComponent(".Trash"))
         var warnings: [ScanWarning] = []
         if denied {
-            warnings.append(ScanWarning(message: "macOS protects the Trash folder. Give Mac Cleaner Full Disk Access to see what's in it.", settingsPane: .fullDiskAccess))
+            warnings.append(ScanWarning(message: "macOS protects the Trash folder. Give Floorspace Full Disk Access to see what's in it.", settingsPane: .fullDiskAccess))
         }
 
         let items = urls.compactMap { url -> ScanItem? in

@@ -310,7 +310,7 @@ private struct Tooltip: View {
                         .frame(maxWidth: 360, alignment: .leading)
                 }
                 if node.isUnreadable {
-                    Text("macOS didn't let Mac Cleaner look inside.").font(.caption).foregroundStyle(.secondary)
+                    Text("macOS didn't let Floorspace look inside.").font(.caption).foregroundStyle(.secondary)
                 }
                 if case .smallFiles = node.kind {
                     hint("Files under 256 KB each, grouped so big scans stay fast.\nDouble-click to open the folder in Finder.")

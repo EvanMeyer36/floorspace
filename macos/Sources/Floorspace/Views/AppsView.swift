@@ -360,7 +360,7 @@ private struct RelatedRow: View {
             Text(item.size.map(Format.bytes) ?? "Not measured")
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .help(item.size == nil ? "macOS didn't let Mac Cleaner look inside to measure it." : "")
+                .help(item.size == nil ? "macOS didn't let Floorspace look inside to measure it." : "")
             Button {
                 apps.reveal([item.url])
             } label: {

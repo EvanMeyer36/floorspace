@@ -1,19 +1,19 @@
 [package]
-name = "cleaner-desktop"
-description = "Mac Cleaner desktop app for Windows, Linux and macOS"
+name = "floorspace-desktop"
+description = "Floorspace desktop app for Windows, Linux and macOS"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "cleaner_desktop_lib"
+name = "floorspace_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-cleaner-core.workspace = true
+floorspace-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }

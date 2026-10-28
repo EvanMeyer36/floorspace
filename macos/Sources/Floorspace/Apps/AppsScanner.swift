@@ -129,7 +129,7 @@ enum AppsScanner {
         let isSelf = url.standardizedFileURL.path == Bundle.main.bundleURL.standardizedFileURL.path
             || (bundleID != nil && bundleID == Bundle.main.bundleIdentifier)
         if isSelf {
-            return "This is Mac Cleaner itself."
+            return "This is Floorspace itself."
         }
         let values = try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey, .isSymbolicLinkKey])
         if values?.isSymbolicLink == true {
