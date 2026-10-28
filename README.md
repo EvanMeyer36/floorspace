@@ -31,6 +31,19 @@ There's also a small `floorspace` command-line tool for scripting.
 
 ![Overview](docs/screenshots/overview.png)
 
+## Download
+
+| | Installer | Portable (no install needed) |
+| --- | --- | --- |
+| **Windows 10/11** | **[Download for Windows](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-windows-setup.exe)** (`.exe`) · [`.msi`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-windows.msi) | [Portable `.zip`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-windows-portable.zip): unzip, run `Floorspace.exe` |
+| **macOS 14+** | **[Download for Mac](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-macOS.dmg)** (`.dmg`) | [Portable `.zip`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-macOS.zip) |
+| **Linux** | [`.deb`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-linux-amd64.deb) (Ubuntu/Debian) · [`.rpm`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-linux-x86_64.rpm) (Fedora) | [`.AppImage`](https://github.com/EvanMeyer36/floorspace/releases/latest/download/Floorspace-linux-x86_64-portable.AppImage): `chmod +x`, then run |
+
+These links always get the newest version. All versions are on the
+[Releases page](https://github.com/EvanMeyer36/floorspace/releases). First launch shows a one-time security warning,
+because the app isn't code-signed yet; see [Install](#install).
+
+
 ---
 
 ## Features
@@ -104,9 +117,9 @@ and a portable version that runs without installing:
 
 | | Installer | Portable |
 | --- | --- | --- |
-| **macOS 14+** (Apple Silicon & Intel) | `Floorspace-x.y.z-macOS.dmg`: drag Floorspace into Applications | `Floorspace-x.y.z-macOS.zip`: unzip and run from anywhere |
-| **Windows 10/11** (x64) | `…-windows-setup.exe` or `…-windows.msi` | `…-windows-portable.zip`: unzip and run `Floorspace.exe` |
-| **Linux** (x86_64) | `…-linux-amd64.deb` (Debian/Ubuntu), `…-linux-x86_64.rpm` (Fedora/openSUSE) | `…-linux-x86_64-portable.AppImage`: `chmod +x` and run |
+| **macOS 14+** (Apple Silicon & Intel) | `Floorspace-macOS.dmg`: drag Floorspace into Applications | `Floorspace-macOS.zip`: unzip and run from anywhere |
+| **Windows 10/11** (x64) | `Floorspace-windows-setup.exe` or `Floorspace-windows.msi` | `Floorspace-windows-portable.zip`: unzip and run `Floorspace.exe` |
+| **Linux** (x86_64) | `Floorspace-linux-amd64.deb` (Debian/Ubuntu), `Floorspace-linux-x86_64.rpm` (Fedora/openSUSE) | `Floorspace-linux-x86_64-portable.AppImage`: `chmod +x` and run |
 
 On a Mac you get the native Mac app; on Windows and Linux, the desktop app.
 

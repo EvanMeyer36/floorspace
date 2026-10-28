@@ -60,27 +60,27 @@ jobs:
           npm ci
           npx tauri build
 
+      # File names stay the same in every release, so .../releases/latest/download/<name> links in the
+      # README always fetch the newest version.
       - name: Collect release files (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $v = "${{ github.ref_name }}".TrimStart("v")
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1) "out/Floorspace-$v-windows-setup.exe"
-          Copy-Item (Get-ChildItem target/release/bundle/msi/*.msi | Select-Object -First 1) "out/Floorspace-$v-windows.msi"
+          Copy-Item (Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1) "out/Floorspace-windows-setup.exe"
+          Copy-Item (Get-ChildItem target/release/bundle/msi/*.msi | Select-Object -First 1) "out/Floorspace-windows.msi"
           # Portable: the app is one self-contained .exe (it uses the WebView2 runtime built into Windows 10/11).
           New-Item -ItemType Directory -Force portable | Out-Null
           Copy-Item target/release/Floorspace.exe portable/Floorspace.exe
-          Compress-Archive -Path portable/Floorspace.exe -DestinationPath "out/Floorspace-$v-windows-portable.zip"
+          Compress-Archive -Path portable/Floorspace.exe -DestinationPath "out/Floorspace-windows-portable.zip"
 
       - name: Collect release files (Linux)
         if: runner.os == 'Linux'
         run: |
-          v="${GITHUB_REF_NAME#v}"
           mkdir -p out
-          cp target/release/bundle/deb/*.deb "out/Floorspace-$v-linux-amd64.deb"
-          cp target/release/bundle/rpm/*.rpm "out/Floorspace-$v-linux-x86_64.rpm"
-          cp target/release/bundle/appimage/*.AppImage "out/Floorspace-$v-linux-x86_64-portable.AppImage"
+          cp target/release/bundle/deb/*.deb "out/Floorspace-linux-amd64.deb"
+          cp target/release/bundle/rpm/*.rpm "out/Floorspace-linux-x86_64.rpm"
+          cp target/release/bundle/appimage/*.AppImage "out/Floorspace-linux-x86_64-portable.AppImage"
 
       - uses: actions/upload-artifact@v4
         with:
